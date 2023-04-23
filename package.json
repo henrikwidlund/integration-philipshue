@@ -10,10 +10,12 @@
 	"license": "ISC",
 	"dependencies": {
 		"axios": "^0.27.2",
+		"bonjour-service": "^1.1.1",
+		"dns": "^0.2.2",
 		"fs": "^0.0.1-security",
 		"https": "^1.0.0",
-		"node-dns-sd": "^0.4.2",
 		"node-hue-api": "^5.0.0-beta.13",
-		"uc-integration-api": "file:../integration-node-library/uc-integration-api-0.0.5.tgz"
+		"uc-integration-api": "file:../uc_integration-node-library/uc-integration-api-0.0.6.tgz",
+		"util": "^0.12.5"
 	}
 }
