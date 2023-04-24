@@ -157,7 +157,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 	console.log('Sending setup progress that we are still busy...');
 
 	// start Hue bridge discovery
-	await discoverBridge();
+	discoverBridge();
 	console.log('Hue bridge discovery started.');
 
 	// start polling bridge address
@@ -169,7 +169,8 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 			clearTimeout(hueDiscoveryTimeout);
 			
 			console.log('Requesting user confirmation...');
-			await uc.requestDriverSetupUserConfirmation(wsHandle, 'User action needed', 'Please press the button on the Philips Hue Bridge and click next.');
+			const img = convertImageToBase64('./assets/setupimg.png');
+			await uc.requestDriverSetupUserConfirmation(wsHandle, 'User action needed', 'Please press the button on the Philips Hue Bridge and click next.', img);
 		}
 	}, 2000);
 
@@ -548,6 +549,18 @@ function convertXYtoHSV(x, y, lightness = 1) {
 	}
 	
 	return res;
+}
+
+function convertImageToBase64(file) {
+	let data;
+
+	try {
+		data = fs.readFileSync(file, 'base64');
+	} catch (e) {
+		console.log(e);
+	}
+
+	return data;
 }
 
 async function loadConfig() {
