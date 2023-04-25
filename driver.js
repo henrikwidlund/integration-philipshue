@@ -122,7 +122,9 @@ uc.on(uc.EVENTS.CONNECT, async () => {
 uc.on(uc.EVENTS.DISCONNECT, async () => {
 	uc.setDeviceState(uc.DEVICE_STATES.DISCONNECTED);
 	ucConnected = false;
-	signalController.abort();
+	if (signalController != null) {
+		signalController.abort();
+	}
 });
 
 uc.on(uc.EVENTS.ENTER_STANDBY, async () => {
