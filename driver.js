@@ -111,6 +111,7 @@ uc.on(uc.EVENTS.CONNECT, async () => {
 		const res = await connectToBridge();
 		if (!res) {
 			uc.setDeviceState(uc.DEVICE_STATES.ERROR);
+			return;
 		}
 
 		subscribeToEvents();
@@ -137,18 +138,10 @@ uc.on(uc.EVENTS.EXIT_STANDBY, async () => {
 	subscribeToEvents();
 });
 
-// uc.on(uc.EVENTS.SUBSCRIBE_ENTITIES, async (entityIds) => {
-// 	entityIds.forEach(async (entityId) => {
-// 	});
-// });
-
-// uc.on(uc.EVENTS.UNSUBSCRIBE_ENTITIES, async (entityIds) => {
-// 	entityIds.forEach(async (entityId) => {
-// 	});
-// });
-
 // DRIVER SETUP
 uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
+	removeConfig();
+
 	console.log(`Setting up driver. Setup data: ${setupData}`);
 
 	await uc.acknowledgeCommand(wsHandle);
@@ -217,7 +210,6 @@ uc.on(uc.EVENTS.SETUP_DRIVER_USER_CONFIRMATION, async (wsHandle) => {
 	}
 });
 // END DRIVER SETUP
-
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 const v3 = require("node-hue-api").v3;
@@ -600,6 +592,15 @@ function saveConfig() {
 		console.log("Config saved to file.");
 	} catch (e) {
 		console.log("Error writing config.");
+	}
+}
+
+function removeConfig() {
+	try {
+		fs.unlinkSync("config.json")
+		console.log("Config file removed.");
+	} catch(e) {
+		console.error(e)
 	}
 }
 
