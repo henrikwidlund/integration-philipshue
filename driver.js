@@ -230,6 +230,7 @@ let signalController = null;
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 const util = require('util');
 const fs = require("fs");
+const path = require('path');
 const { Bonjour } = require('bonjour-service');
 const browser = new Bonjour();
 const axios = require("axios");
@@ -559,7 +560,7 @@ function convertImageToBase64(file) {
 
 async function loadConfig() {
 	try {
-		const raw = fs.readFileSync(uc.configDirPath + "/config.json");
+		const raw = fs.readFileSync(path.join(uc.configDirPath, "config.json"));
 
 		try {
 			const json = JSON.parse(raw);
@@ -582,7 +583,7 @@ async function loadConfig() {
 function saveConfig() {
 	try {
 		fs.writeFileSync(
-			uc.configDirPath + "config.json",
+			path.join(uc.configDirPath, "config.json"),
 			JSON.stringify({
 				hueBridgeAddress: hueBridgeAddress,
 				hueBridgeUser: hueBridgeUser,
@@ -597,7 +598,7 @@ function saveConfig() {
 
 function removeConfig() {
 	try {
-		fs.unlinkSync(uc.configDirPath + "/config.json")
+		fs.unlinkSync(path.join(uc.configDirPath, "config.json"))
 		console.log("Config file removed.");
 	} catch(e) {
 		console.error(e)
