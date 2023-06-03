@@ -3,7 +3,7 @@
 	"version": "0.0.3",
 	"min_core_api": "0.0.2",
 	"name": { "en": "Philips Hue" },
-	"icon": "custom:hue_logo.png",
+	"icon": "custom:philips-hue.png",
 	"description": {
 		"en": "Control your Philips Hue lights with Remote Two."
 	},
