@@ -157,51 +157,42 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 	await uc.driverSetupProgress(wsHandle);
 	console.log('Sending setup progress that we are still busy...');
 
-	// start Hue bridge discovery
-	discoverBridges();
-	console.log('Hue bridge discovery started.');
-
-	// start polling bridge address
-	hueDiscoveryCheck = setInterval(async () => {
-		if (discoveredHueBridges.length !== 0) {
-			console.log('We have discovered Hue bridges:', discoveredHueBridges);
-
-			clearInterval(hueDiscoveryCheck);
-			clearTimeout(hueDiscoveryTimeout);
-
-			let dropdownItems = [];
-
-			discoveredHueBridges.forEach((item) => {
-				dropdownItems.push({
-					'id': item.address,
-					'label': {
-						'en': item.name
-					}
-				});
-			});
-
-			console.log(dropdownItems);
-
-			await uc.requestDriverSetupUserInput(wsHandle, 'Please select your Philips Hue hub', [{
-				'field': {
-					'dropdown': {
-						'value': dropdownItems[0]['id'],
-						'items': dropdownItems
-					}
-				},
-				'id': 'choice',
-				'label': {'en': 'Discovered hubs'}
-			}]);
-		}
-	}, 4000);
-
 	hueDiscoveryTimeout = setTimeout(async () => {
-		clearInterval(hueDiscoveryCheck);
 		console.log('Discovery timeout');
-
 		await uc.driverSetupError(wsHandle);
 
 	}, 10000);
+
+	// start Hue bridge discovery
+	let result = await discoverBridges();
+
+	if (result.length !== 0) {
+		console.log('We have discovered Hue bridges:', result);
+
+		clearTimeout(hueDiscoveryTimeout);
+
+		let dropdownItems = [];
+
+		result.forEach((item) => {
+			dropdownItems.push({
+				'id': item.address,
+				'label': {
+					'en': item.name
+				}
+			});
+		});
+
+		await uc.requestDriverSetupUserInput(wsHandle, 'Please select your Philips Hue hub', [{
+			'field': {
+				'dropdown': {
+					'value': dropdownItems[0]['id'],
+					'items': dropdownItems
+				}
+			},
+			'id': 'choice',
+			'label': {'en': 'Discovered hubs'}
+		}]);
+	}
 });
 
 uc.on(uc.EVENTS.SETUP_DRIVER_USER_DATA, async (wsHandle, data) => {
@@ -213,7 +204,8 @@ uc.on(uc.EVENTS.SETUP_DRIVER_USER_DATA, async (wsHandle, data) => {
 		await uc.driverSetupError(wsHandle);
 	}
 
-	hueBridgeAddress = data.choice;
+	hueBridgeAddress = discoveredHueBridges[data.choice].address;
+	hueBridgeIp = discoveredHueBridges[data.choice].ip;
 
 	console.log('Requesting user confirmation...');
 	const img = convertImageToBase64('./assets/setupimg.png');
@@ -230,7 +222,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER_USER_CONFIRMATION, async (wsHandle) => {
 	console.log('Sending setup progress that we are still busy...');
 
 	// pair with the bridge
-	const res = await pairWithBridge(hueBridgeAddress);
+	const res = await pairWithBridge(hueBridgeIp);
 
 	if (res) {
 		// connect to Hue bridge
@@ -257,12 +249,12 @@ const appName = "uc-integration";
 const deviceName = "UC Remote Two";
 
 let ucConnected = false;
+let discoveredHueBridges = {};
 let hueBridgeAddress = null;
+let hueBridgeIp = null;
 let hueBridgeUser = null;
 let hueBridgeKey = null;
-let hueDiscoveryCheck;
 let hueDiscoveryTimeout;
-let discoveredHueBridges = null;
 
 let signalController = null;
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -273,17 +265,28 @@ const { Bonjour } = require('bonjour-service');
 const browser = new Bonjour();
 const axios = require("axios");
 const https = require("https");
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-async function discoverBridges() {
-	discoveredHueBridges = [];
+async function discoverBridges(timeOut = 4000) {
+	let results = [];
 
 	browser.find({ type: 'hue' }, async (service) => {
 		console.log('Found a Hue hub:', service);
-		discoveredHueBridges.push({
+		results.push({
 			'address': service.host,
+			'ip': service.referer.address,
 			'name': service.name
 		});
+
+		discoveredHueBridges[service.host] = {
+			'address': service.host,
+			'ip': service.referer.address,
+			'name': service.name
+		};
 	});	
+
+	await delay(timeOut);
+	return results;
 }
 
 async function pairWithBridge(address) {
@@ -323,11 +326,26 @@ async function pairWithBridge(address) {
 }
 
 async function connectToBridge() {
-	authenticatedApi = await hueApi
-		.createLocal(hueBridgeAddress)
-		.connect(hueBridgeUser);
+	try {
+		authenticatedApi = await hueApi
+			.createLocal(hueBridgeIp)
+			.connect(hueBridgeUser);
+	} catch (err) {
+		console.error(`Failed to connect: ${err.message}`);
 
-	const bridgeConfig = await authenticatedApi.configuration.getConfiguration();
+		await discoverBridges();
+		hueBridgeIp = discoveredHueBridges[hueBridgeAddress].ip;
+		saveConfig();
+		connectToBridge();
+	}
+
+	let bridgeConfig;
+	try {
+		bridgeConfig = await authenticatedApi.configuration.getConfiguration();
+	} catch (err) {
+		console.error(`Failed to get configuration: ${err.message}`);
+		return false;
+	}
 
 	if (bridgeConfig.name) {
 		console.log(`Connected to Hue Bridge: ${bridgeConfig.name} :: ${bridgeConfig.ipaddress}`);
@@ -418,7 +436,7 @@ async function subscribeToEvents() {
 	signalController = new AbortController();
 
 	axios
-		.get(`https://${hueBridgeAddress}/eventstream/clip/v2`, {
+		.get(`https://${hueBridgeIp}/eventstream/clip/v2`, {
 			responseType: "stream",
 			signal: signalController.signal,
 			headers: {
@@ -516,10 +534,14 @@ async function subscribeToEvents() {
 				}
 			});
 		})
-		.catch((error) => {
+		.catch(async (error) => {
 			// handle error
-			console.log(error);
+			console.log('Stream error', error);
+
 			if (ucConnected) {
+				await discoverBridges();
+				hueBridgeIp = discoveredHueBridges[hueBridgeAddress].ip;
+				saveConfig();
 				subscribeToEvents();
 			}
 		});
@@ -594,6 +616,7 @@ async function loadConfig() {
 		try {
 			const json = JSON.parse(raw);
 			hueBridgeAddress = json.hueBridgeAddress;
+			hueBridgeIp = json.hueBridgeIp;
 			hueBridgeUser = json.hueBridgeUser;
 			hueBridgeKey = json.hueBridgeKey;
 			console.log(`Config loaded >> Address: ${hueBridgeAddress} User: ${hueBridgeUser}`);
@@ -615,6 +638,7 @@ function saveConfig() {
 			path.join(uc.configDirPath, "config.json"),
 			JSON.stringify({
 				hueBridgeAddress: hueBridgeAddress,
+				hueBridgeIp: hueBridgeIp,
 				hueBridgeUser: hueBridgeUser,
 				hueBridgeKey: hueBridgeKey,
 			})
