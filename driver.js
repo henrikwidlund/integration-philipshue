@@ -158,7 +158,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 	console.log('Sending setup progress that we are still busy...');
 
 	// start Hue bridge discovery
-	discoverBridge();
+	discoverBridges();
 	console.log('Hue bridge discovery started.');
 
 	// start polling bridge address
@@ -274,24 +274,29 @@ const browser = new Bonjour();
 const axios = require("axios");
 const https = require("https");
 
-async function discoverBridge() {
+async function discoverBridges() {
 	discoveredHueBridges = [];
 
 	browser.find({ type: 'hue' }, async (service) => {
-		// console.log('Found a Hue hub:', service);
+		console.log('Found a Hue hub:', service);
 		discoveredHueBridges.push({
 			'address': service.host,
 			'name': service.name
 		});
-	})
-
-	
+	});	
 }
 
 async function pairWithBridge(address) {
 	let res = false;
 
-	const unauthenticatedApi = await hueApi.createLocal(address).connect();
+	let unauthenticatedApi;
+	
+	try {
+		unauthenticatedApi = await hueApi.createLocal(address).connect();
+	} catch (err) {
+		console.error(`Unexpected Error: ${err.message}`);
+		return false;
+	}
 
 	let createdUser;
 	try {
