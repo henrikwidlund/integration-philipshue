@@ -4,6 +4,9 @@
 const uc = require("uc-integration-api");
 uc.init("driver.json");
 
+const BACKOFF_MAX = 30;
+const BACKOFF_SEC = 2;
+
 // handle commands coming from the core
 uc.on(
 	uc.EVENTS.ENTITY_COMMAND,
@@ -12,8 +15,6 @@ uc.on(
 			`ENTITY COMMAND: ${wsHandle} ${entity_id} ${entity_type} ${cmd_id}`
 		);
 
-		const hueId = entity_id.split("_")[1];
-
 		const entity = await uc.configuredEntities.getEntity(entity_id);
 
 		switch (cmd_id) {
@@ -21,7 +22,7 @@ uc.on(
 				if (entity.attributes.state == uc.Entities.Light.STATES.ON) {
 					// turn off
 					authenticatedApi.lights
-						.setLightState(hueId, {
+						.setLightState(entity_id, {
 							on: false,
 						})
 						.then((result) => {
@@ -29,6 +30,7 @@ uc.on(
 							uc.acknowledgeCommand(wsHandle);
 						})
 						.catch((error) => {
+							console.error("Error setting light state", String(error));
 							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
 						});
 				} else if (
@@ -36,7 +38,7 @@ uc.on(
 				) {
 					// turn on
 					authenticatedApi.lights
-						.setLightState(hueId, {
+						.setLightState(entity_id, {
 							on: true,
 						})
 						.then((result) => {
@@ -44,6 +46,7 @@ uc.on(
 							uc.acknowledgeCommand(wsHandle);
 						})
 						.catch((error) => {
+							console.error("Error setting light state", String(error));
 							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
 						});
 				}
@@ -78,19 +81,20 @@ uc.on(
 				}
 
 				authenticatedApi.lights
-					.setLightState(hueId, hueParams)
+					.setLightState(entity_id, hueParams)
 					.then((result) => {
 						console.log("Result:", result);
 						uc.acknowledgeCommand(wsHandle);
 					})
 					.catch((error) => {
+						console.error("Error setting light state", String(error));
 						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
 					});
 				break;
 
 			case uc.Entities.Light.COMMANDS.OFF:
 				authenticatedApi.lights
-					.setLightState(hueId, {
+					.setLightState(entity_id, {
 						on: false,
 					})
 					.then((result) => {
@@ -98,6 +102,7 @@ uc.on(
 						uc.acknowledgeCommand(wsHandle, true);
 					})
 					.catch((error) => {
+						console.error("Error setting light state", String(error));
 						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
 					});
 				break;
@@ -106,41 +111,32 @@ uc.on(
 );
 
 uc.on(uc.EVENTS.CONNECT, async () => {
-	if (hueBridgeKey != null) {
-		// connect to hue bridge
-		const res = await connectToBridge();
-		if (!res) {
-			uc.setDeviceState(uc.DEVICE_STATES.ERROR);
-			return;
-		}
-
-		subscribeToEvents();
-		uc.setDeviceState(uc.DEVICE_STATES.CONNECTED);
-		ucConnected = true;
-	}
+	connect();
 });
 
 uc.on(uc.EVENTS.DISCONNECT, async () => {
+	stopPolling();
 	uc.setDeviceState(uc.DEVICE_STATES.DISCONNECTED);
 	ucConnected = false;
-	if (signalController != null) {
-		signalController.abort();
-	}
+	ucConnectionAttempts = 0;
+});
+
+uc.on(uc.EVENTS.SUBSCRIBE_ENTITIES, async (entityIds) => {	
+	startPolling();
+});
+
+uc.on(uc.EVENTS.UNSUBSCRIBE_ENTITIES, async (entityIds) => {	
+	stopPolling();
 });
 
 uc.on(uc.EVENTS.ENTER_STANDBY, async () => {
 	ucConnected = false;
-	signalController.abort();
+	ucConnectionAttempts = 0;
+	stopPolling();
 });
 
 uc.on(uc.EVENTS.EXIT_STANDBY, async () => {
-	const res = await connectToBridge();
-		if (!res) {
-			uc.setDeviceState(uc.DEVICE_STATES.ERROR);
-			return;
-		}
-
-	subscribeToEvents();
+	connect();
 	ucConnected = true;
 });
 
@@ -160,7 +156,6 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 	hueDiscoveryTimeout = setTimeout(async () => {
 		console.log('Discovery timeout');
 		await uc.driverSetupError(wsHandle);
-
 	}, 10000);
 
 	// start Hue bridge discovery
@@ -232,9 +227,11 @@ uc.on(uc.EVENTS.SETUP_DRIVER_USER_CONFIRMATION, async (wsHandle) => {
 			console.log('Driver setup completed!');
 			await uc.driverSetupComplete(wsHandle);
 		} else {
+			console.error("Error connecting to the Hue bridge.");
 			await uc.driverSetupError(wsHandle);
 		}
 	} else {
+		console.error("Error pairing with the Hue bridge.");
 		await uc.driverSetupError(wsHandle);
 	}
 });
@@ -249,6 +246,7 @@ const appName = "uc-integration";
 const deviceName = "UC Remote Two";
 
 let ucConnected = false;
+let ucConnectionAttempts = 0;
 let discoveredHueBridges = {};
 let hueBridgeAddress = null;
 let hueBridgeIp = null;
@@ -256,15 +254,12 @@ let hueBridgeUser = null;
 let hueBridgeKey = null;
 let hueDiscoveryTimeout;
 
-let signalController = null;
+let pollWorker = null;
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-const util = require('util');
 const fs = require("fs");
 const path = require('path');
 const { Bonjour } = require('bonjour-service');
 const browser = new Bonjour();
-const axios = require("axios");
-const https = require("https");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 async function discoverBridges(timeOut = 4000) {
@@ -325,6 +320,42 @@ async function pairWithBridge(address) {
 	return res;
 }
 
+async function connect() {
+	if (hueBridgeKey != null) {
+		console.debug("Connecting to bridge...");
+		// connect to hue bridge
+		let res = false;
+		while (!res) {
+			res = await connectToBridge();
+
+			if (!res) {
+				uc.setDeviceState(uc.DEVICE_STATES.CONNECTING);
+				console.error("Error connecting to the Hue bridge. Trying again.");
+				ucConnectionAttempts += 1;
+	
+				if (ucConnectionAttempts == 10) {
+					console.debug("Discovering the bridge again.");
+					const discoveredRes = await discoverBridges();
+					if (hueBridgeAddress in discoveredRes) {
+						hueBridgeIp = discoveredHueBridges[hueBridgeAddress].ip;
+						saveConfig();
+					}
+					await delay(1000);
+					await connectToBridge();
+				}
+
+				console.debug("Trying again in:", backOff());
+				await delay(backOff());
+			}
+		}
+
+		uc.setDeviceState(uc.DEVICE_STATES.CONNECTED);
+		ucConnected = true;
+		ucConnectionAttempts = 0;
+		startPolling();
+	}
+}
+
 async function connectToBridge() {
 	try {
 		authenticatedApi = await hueApi
@@ -332,11 +363,7 @@ async function connectToBridge() {
 			.connect(hueBridgeUser);
 	} catch (err) {
 		console.error(`Failed to connect: ${err.message}`);
-
-		await discoverBridges();
-		hueBridgeIp = discoveredHueBridges[hueBridgeAddress].ip;
-		saveConfig();
-		connectToBridge();
+		return false;
 	}
 
 	let bridgeConfig;
@@ -360,24 +387,22 @@ async function addAvailableLights() {
 	const lights = await authenticatedApi.lights.getAll();
 
 	lights.forEach((light) => {
-		// console.log(light);
-
 		let features = [
 			uc.Entities.Light.FEATURES.ON_OFF,
 			uc.Entities.Light.FEATURES.TOGGLE,
 		];
 
 		let values = new Map([
-			[uc.Entities.Light.ATTRIBUTES.STATE, light.data.state.on
+			[uc.Entities.Light.ATTRIBUTES.STATE, light.state.on
 				? uc.Entities.Light.STATES.ON
 				: uc.Entities.Light.STATES.OFF]
 		]);
 
-		switch (light.data.type) {
+		switch (light.type) {
 			case "Dimmable light":
 				features.push(uc.Entities.Light.FEATURES.DIM);
 				values.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS],
-					light.data.state.bri);
+					light.state.bri);
 				break;
 
 			case "Color light":
@@ -386,10 +411,10 @@ async function addAvailableLights() {
 					uc.Entities.Light.FEATURES.COLOR
 				);
 				values.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS],
-					light.data.state.bri);
-				values.set([uc.Entities.Light.ATTRIBUTES.HUE], light.data.state.hue);
+					light.state.bri);
+				values.set([uc.Entities.Light.ATTRIBUTES.HUE], light.state.hue);
 				values.set([uc.Entities.Light.ATTRIBUTES.SATURATION],
-					light.data.state.sat);
+					light.state.sat);
 				break;
 
 			case "Color temperature light":
@@ -398,9 +423,9 @@ async function addAvailableLights() {
 					uc.Entities.Light.FEATURES.COLOR_TEMPERATURE
 				);
 				values.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS],
-					light.data.state.bri);
+					light.state.bri);
 				values.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE],
-					light.data.state.ct);
+					light.state.ct);
 				break;
 
 			case "Extended color light":
@@ -410,19 +435,19 @@ async function addAvailableLights() {
 					uc.Entities.Light.FEATURES.COLOR_TEMPERATURE
 				);
 				values.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS],
-					light.data.state.bri);
-				values.set([uc.Entities.Light.ATTRIBUTES.HUE], light.data.state.hue);
+					light.state.bri);
+				values.set([uc.Entities.Light.ATTRIBUTES.HUE], light.state.hue);
 				values.set([uc.Entities.Light.ATTRIBUTES.SATURATION],
-					light.data.state.sat);
+					light.state.sat);
 				values.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE],
-					light.data.state.ct);
+					light.state.ct);
 				break;
 		}
 
 		const entity = new uc.Entities.Light(
-			String("hue_" + light.data.id),
+			String(light.id),
 			new Map([[
-				'en', light.data.name
+				'en', light.name
 			]]),
 			features,
 			values
@@ -432,119 +457,78 @@ async function addAvailableLights() {
 	});
 }
 
-async function subscribeToEvents() {
-	signalController = new AbortController();
+async function startPolling() {
+	console.debug("Started polling.");
+	if (pollWorker != null) {
+		console.debug("Polling has already started.");
+		return;
+	}
 
-	axios
-		.get(`https://${hueBridgeIp}/eventstream/clip/v2`, {
-			responseType: "stream",
-			signal: signalController.signal,
-			headers: {
-				"hue-application-key": hueBridgeUser,
-			},
-			httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-		})
-		.then((response) => {
-			const stream = response.data;
+	pollWorker = setInterval(async () => {
+		if (!ucConnected) {
+			return;
+		}
 
-			stream.on("data", (data) => {
-				data = data.toString();
-				const answers = data.split("\r\n\r\n");
+		const entities = uc.configuredEntities.getEntities();
+		// const lights = await authenticatedApi.lights.getAll();
 
-				answers.forEach((answer) => {
-					try {
-						answer = JSON.parse(answer);
+		for (const entity of entities) {
+			if (entity.entity_id) {
+				let response = new Map([]);
 
-						answer.forEach((item) => {
-							item.data.forEach(async (dataItem) => {
-								// we care only about lights for now
-								const lightId =
-									dataItem.id_v1.split("/lights/")[1];
+				try {
+					const light = await authenticatedApi.lights.getLight(entity.entity_id);
+					const configredEntity = uc.configuredEntities.getEntity(entity.entity_id);
 
-								if (lightId) {
-									const entityId = "hue_" + String(lightId);
-									
-									if (!uc.configuredEntities.contains(entityId)) {
-										return;
-									}
+					console.debug("Got ligth with id:", light.id, light.name);
 
-									console.log(JSON.stringify(dataItem));
-									
-									let response = new Map([]);
-
-									// state
-									if (dataItem.on) {
-										response.set([uc.Entities.Light.ATTRIBUTES.STATE], dataItem.on.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF);
-										const lightState = await authenticatedApi.lights.getLightState(lightId);
-										
-										response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], lightState.bri + 1);
-
-										response.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE], convertColorTempFromHue(
-											lightState.ct
-										));
-										
-										const res = convertXYtoHSV(lightState.xy[0], lightState.xy[1]);
-										response.set([uc.Entities.Light.ATTRIBUTES.HUE], res.hue);
-										response.set([uc.Entities.Light.ATTRIBUTES.SATURATION], res.sat);
-									}
-
-									// brightness
-									if (dataItem.dimming) {
-										response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], parseInt(
-												(dataItem.dimming.brightness /
-													100) *
-													255
-											));
-									}
-
-									if (dataItem.color_temperature) {
-										// color temeprature
-										if (
-											dataItem.color_temperature
-												.mirek_valid == true
-										) {
-											response.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE], convertColorTempFromHue(
-												dataItem.color_temperature
-													.mirek
-											));
-										}
-										// colors
-										else {
-											const res = convertXYtoHSV(dataItem.color.xy.x, dataItem.color.xy.y);
-											response.set([uc.Entities.Light.ATTRIBUTES.HUE], res.hue);
-											response.set([uc.Entities.Light.ATTRIBUTES.SATURATION], res.sat);
-										}
-									}
-
-									console.log(response);
-									uc.configuredEntities.updateEntityAttributes(entityId, response);
-								}
-							});
-						});
-					} catch (e) {
-						console.log(e);
+					const state = light.state;
+					const entityState = state.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF;
+					if (configredEntity.attributes.state != entityState) {
+						response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
 					}
-				});
-			});
 
-			stream.on("end", () => {
-				console.log("Stream disconnected");
-				if (ucConnected) {
-					subscribeToEvents();
+					if (configredEntity.attributes.brightness != state.bri) {
+						response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
+					}
+
+					const entityColorTemp = convertColorTempFromHue(state.ct);
+					if (configredEntity.attributes.color_temperature != entityColorTemp) {
+						response.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE], entityColorTemp);
+					}
+					const res = convertXYtoHSV(state.xy[0], state.xy[1]);
+					const entityHue = res.hue;
+					const entitySat = res.sat;
+					if (configredEntity.attributes.hue != entityHue) {
+						response.set([uc.Entities.Light.ATTRIBUTES.HUE], entityHue);
+					}
+					if (configredEntity.attributes.saturation != entitySat) {
+						response.set([uc.Entities.Light.ATTRIBUTES.SATURATION], entitySat);
+					}
+				} catch(error) {
+					console.error("Error getting hue light:", entity.entity_id);
+					response.set([uc.Entities.Light.ATTRIBUTES.STATE], uc.Entities.Light.STATES.UNAVAILABLE);
 				}
-			});
-		})
-		.catch(async (error) => {
-			// handle error
-			console.log('Stream error', error);
-
-			if (ucConnected) {
-				await discoverBridges();
-				hueBridgeIp = discoveredHueBridges[hueBridgeAddress].ip;
-				saveConfig();
-				subscribeToEvents();
+				
+				if (response.size > 0) {
+					uc.configuredEntities.updateEntityAttributes(entity.entity_id, response);
+				}
 			}
-		});
+		}
+	}, 2000);
+}
+
+async function stopPolling() {
+	clearInterval(pollWorker);
+	pollWorker = null;
+	console.debug("Polling stopped.");
+}
+
+function backOff() {
+	if (ucConnectionAttempts * BACKOFF_SEC >= BACKOFF_MAX)
+		return BACKOFF_MAX;
+
+	return ucConnectionAttempts * BACKOFF_SEC;
 }
 
 function convertColorTempFromHue(colorTemp) {
@@ -603,7 +587,7 @@ function convertImageToBase64(file) {
 	try {
 		data = fs.readFileSync(file, 'base64');
 	} catch (e) {
-		console.log(e);
+		console.error(e);
 	}
 
 	return data;
@@ -621,12 +605,12 @@ async function loadConfig() {
 			hueBridgeKey = json.hueBridgeKey;
 			console.log(`Config loaded >> Address: ${hueBridgeAddress} User: ${hueBridgeUser}`);
 		} catch (e) {
-			console.log(
+			console.error(
 				"Error parsing config info. Starting with empty config."
 			);
 		}
 	} catch (e) {
-		console.log(
+		console.error(
 			"No config file found. Starting with empty config."
 		);
 	}
@@ -645,17 +629,25 @@ function saveConfig() {
 		);
 		console.log("Config saved to file.");
 	} catch (e) {
-		console.log("Error writing config.");
+		console.error("Error writing config.");
 	}
 }
 
 function removeConfig() {
+	const configPath = path.join(uc.configDirPath, "config.json");
+
 	try {
-		fs.unlinkSync(path.join(uc.configDirPath, "config.json"))
-		console.log("Config file removed.");
-	} catch(e) {
-		console.error(e)
-	}
+		if (fs.existsSync(configPath)) {
+			try {
+				fs.unlinkSync(configPath)
+				console.log("Config file removed.");
+			} catch(e) {
+				console.error(e)
+			}
+		}
+	  } catch(e) {
+		console.error(e);
+	  }
 }
 
 async function init() {
