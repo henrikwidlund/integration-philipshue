@@ -18,7 +18,7 @@ uc.on(
 		const entity = await uc.configuredEntities.getEntity(entity_id);
 		if (entity == null) {
 			console.error("Cannot find entity", entity_id);
-			uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+			uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 			return;
 		}
 
@@ -36,7 +36,7 @@ uc.on(
 						})
 						.catch((error) => {
 							console.error("Error setting light state", String(error));
-							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 						});
 				} else if (
 					entity.attributes.state == uc.Entities.Light.STATES.OFF
@@ -52,7 +52,7 @@ uc.on(
 						})
 						.catch((error) => {
 							console.error("Error setting light state", String(error));
-							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 						});
 				}
 				break;
@@ -93,7 +93,7 @@ uc.on(
 					})
 					.catch((error) => {
 						console.error("Error setting light state", String(error));
-						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 					});
 				break;
 
@@ -108,19 +108,19 @@ uc.on(
 					})
 					.catch((error) => {
 						console.error("Error setting light state", String(error));
-						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 					});
 				break;
 
 			default:
-				uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+				uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.BAD_REQUEST);
 				break;
 		}
 	}
 );
 
 uc.on(uc.EVENTS.CONNECT, async () => {
-	connect();
+	await connect();
 });
 
 uc.on(uc.EVENTS.DISCONNECT, async () => {
@@ -145,7 +145,7 @@ uc.on(uc.EVENTS.ENTER_STANDBY, async () => {
 });
 
 uc.on(uc.EVENTS.EXIT_STANDBY, async () => {
-	connect();
+	await connect();
 	ucConnected = true;
 });
 
