@@ -16,6 +16,11 @@ uc.on(
 		);
 
 		const entity = await uc.configuredEntities.getEntity(entity_id);
+		if (entity == null) {
+			console.error("Cannot find entity", entity_id);
+			uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+			return;
+		}
 
 		switch (cmd_id) {
 			case uc.Entities.Light.COMMANDS.TOGGLE:
@@ -106,6 +111,10 @@ uc.on(
 						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
 					});
 				break;
+
+			default:
+				uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVER_ERROR);
+				break;
 		}
 	}
 );
@@ -121,11 +130,11 @@ uc.on(uc.EVENTS.DISCONNECT, async () => {
 	ucConnectionAttempts = 0;
 });
 
-uc.on(uc.EVENTS.SUBSCRIBE_ENTITIES, async (entityIds) => {	
+uc.on(uc.EVENTS.SUBSCRIBE_ENTITIES, async (entityIds) => {
 	startPolling();
 });
 
-uc.on(uc.EVENTS.UNSUBSCRIBE_ENTITIES, async (entityIds) => {	
+uc.on(uc.EVENTS.UNSUBSCRIBE_ENTITIES, async (entityIds) => {
 	stopPolling();
 });
 
@@ -185,7 +194,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 				}
 			},
 			'id': 'choice',
-			'label': {'en': 'Discovered hubs'}
+			'label': { 'en': 'Discovered hubs' }
 		}]);
 	}
 });
@@ -278,7 +287,7 @@ async function discoverBridges(timeOut = 4000) {
 			'ip': service.referer.address,
 			'name': service.name
 		};
-	});	
+	});
 
 	await delay(timeOut);
 	return results;
@@ -288,7 +297,7 @@ async function pairWithBridge(address) {
 	let res = false;
 
 	let unauthenticatedApi;
-	
+
 	try {
 		unauthenticatedApi = await hueApi.createLocal(address).connect();
 	} catch (err) {
@@ -332,7 +341,7 @@ async function connect() {
 				uc.setDeviceState(uc.DEVICE_STATES.CONNECTING);
 				console.error("Error connecting to the Hue bridge. Trying again.");
 				ucConnectionAttempts += 1;
-	
+
 				if (ucConnectionAttempts == 10) {
 					console.debug("Discovering the bridge again.");
 					const discoveredRes = await discoverBridges();
@@ -480,36 +489,58 @@ async function startPolling() {
 					const light = await authenticatedApi.lights.getLight(entity.entity_id);
 					const configredEntity = uc.configuredEntities.getEntity(entity.entity_id);
 
-					console.debug("Got ligth with id:", light.id, light.name);
+					console.debug("Got hue ligth with id:", light.id, light.name);
 
-					const state = light.state;
-					const entityState = state.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF;
-					if (configredEntity.attributes.state != entityState) {
-						response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
-					}
-
-					if (configredEntity.attributes.brightness != state.bri) {
-						response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
+					if (configredEntity == null) {
+						console.error("Cannot find configured entity with id", entity.entity_id);
+						return;
 					}
 
-					const entityColorTemp = convertColorTempFromHue(state.ct);
-					if (configredEntity.attributes.color_temperature != entityColorTemp) {
-						response.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE], entityColorTemp);
+					if (light.state) {
+						const state = light.state;
+						const entityState = state?.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF || uc.Entities.Light.STATES.UNAVAILABLE;
+						if (configredEntity.attributes.state != entityState) {
+							response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
+						}
 					}
-					const res = convertXYtoHSV(state.xy[0], state.xy[1]);
-					const entityHue = res.hue;
-					const entitySat = res.sat;
-					if (configredEntity.attributes.hue != entityHue) {
-						response.set([uc.Entities.Light.ATTRIBUTES.HUE], entityHue);
+
+					if (state.bri) {
+						if (configredEntity.attributes.brightness != state.bri) {
+							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
+						}
 					}
-					if (configredEntity.attributes.saturation != entitySat) {
-						response.set([uc.Entities.Light.ATTRIBUTES.SATURATION], entitySat);
+
+					if (state.ct) {
+						try {
+							const entityColorTemp = convertColorTempFromHue(state.ct);
+							if (configredEntity.attributes.color_temperature != entityColorTemp) {
+								response.set([uc.Entities.Light.ATTRIBUTES.COLOR_TEMPERATURE], entityColorTemp);
+							}
+						} catch (error) {
+							console.error("Could not convert color temperature for", entity.entity_id);
+						}
 					}
-				} catch(error) {
+
+					if (state.xy) {
+						try {
+							const res = convertXYtoHSV(state.xy[0], state.xy[1]);
+							const entityHue = res.hue;
+							const entitySat = res.sat;
+							if (configredEntity.attributes.hue != entityHue) {
+								response.set([uc.Entities.Light.ATTRIBUTES.HUE], entityHue);
+							}
+							if (configredEntity.attributes.saturation != entitySat) {
+								response.set([uc.Entities.Light.ATTRIBUTES.SATURATION], entitySat);
+							}
+						} catch (error) {
+							console.error("Could not convert color for", entity.entity_id);
+						}
+					}
+				} catch (error) {
 					console.error("Error getting hue light:", entity.entity_id);
 					response.set([uc.Entities.Light.ATTRIBUTES.STATE], uc.Entities.Light.STATES.UNAVAILABLE);
 				}
-				
+
 				if (response.size > 0) {
 					uc.configuredEntities.updateEntityAttributes(entity.entity_id, response);
 				}
@@ -577,7 +608,7 @@ function convertXYtoHSV(x, y, lightness = 1) {
 		hue: Math.round(H) % 360,
 		sat: Math.max(0, Math.min(ScaledS, 255))
 	}
-	
+
 	return res;
 }
 
@@ -641,13 +672,13 @@ function removeConfig() {
 			try {
 				fs.unlinkSync(configPath)
 				console.log("Config file removed.");
-			} catch(e) {
+			} catch (e) {
 				console.error(e)
 			}
 		}
-	  } catch(e) {
+	} catch (e) {
 		console.error(e);
-	  }
+	}
 }
 
 async function init() {
