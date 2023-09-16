@@ -502,6 +502,7 @@ async function startPolling() {
 						const entityState = state?.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF || uc.Entities.Light.STATES.UNAVAILABLE;
 						if (configredEntity.attributes.state != entityState) {
 							response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
+							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state?.on ? state.bri : 0);
 						}
 					}
 
