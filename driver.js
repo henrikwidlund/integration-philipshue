@@ -500,7 +500,7 @@ async function startPolling() {
 
 					const state = light.state;
 
-					if (state.bri) {
+					if (state.bri && configredEntity.attributes.state == uc.Entities.Light.STATES.ON) {
 						if (configredEntity.attributes.brightness != state.bri) {
 							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
 						}
