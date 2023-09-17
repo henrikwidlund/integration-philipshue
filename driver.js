@@ -26,29 +26,31 @@ uc.on(
 			case uc.Entities.Light.COMMANDS.ON:
 				let hueParams = { on: true };
 
-				if (params.brightness == 0) {
-					hueParams["on"] = false;
-				}
+				if (params) {
+					if (params.brightness) {
+						if (params.brightness == 0) {
+							hueParams["on"] = false;
+						} else {
+							hueParams["bri"] = params.brightness - 1; // hue works with 0-254
+						}
+					}
 
-				if (params.brightness) {
-					hueParams["bri"] = params.brightness - 1; // hue works with 0-254
-				}
+					// The hue value is a wrapping value between 0 and 65535
+					if (params.hue) {
+						const scale = ((params.hue - 0) / 360) * 65535;
+						hueParams["hue"] = scale;
+					}
 
-				// The hue value is a wrapping value between 0 and 65535
-				if (params.hue) {
-					const scale = ((params.hue - 0) / 360) * 65535;
-					hueParams["hue"] = scale;
-				}
+					if (params.saturation) {
+						hueParams["sat"] = params.saturation - 1; // hue works with 0-254
+					}
 
-				if (params.saturation) {
-					hueParams["sat"] = params.saturation - 1; // hue works with 0-254
-				}
-
-				// 153 - 500
-				if (params.color_temperature) {
-					hueParams["ct"] = convertColorTempToHue(
-						params.color_temperature
-					);
+					// 153 - 500
+					if (params.color_temperature) {
+						hueParams["ct"] = convertColorTempToHue(
+							params.color_temperature
+						);
+					}
 				}
 
 				authenticatedApi.lights
