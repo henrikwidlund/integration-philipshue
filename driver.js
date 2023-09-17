@@ -23,40 +23,6 @@ uc.on(
 		}
 
 		switch (cmd_id) {
-			case uc.Entities.Light.COMMANDS.TOGGLE:
-				if (entity.attributes.state == uc.Entities.Light.STATES.ON) {
-					// turn off
-					authenticatedApi.lights
-						.setLightState(entity_id, {
-							on: false,
-						})
-						.then((result) => {
-							console.log("Result:", result);
-							uc.acknowledgeCommand(wsHandle);
-						})
-						.catch((error) => {
-							console.error("Error setting light state", String(error));
-							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
-						});
-				} else if (
-					entity.attributes.state == uc.Entities.Light.STATES.OFF
-				) {
-					// turn on
-					authenticatedApi.lights
-						.setLightState(entity_id, {
-							on: true,
-						})
-						.then((result) => {
-							console.log("Result:", result);
-							uc.acknowledgeCommand(wsHandle);
-						})
-						.catch((error) => {
-							console.error("Error setting light state", String(error));
-							uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
-						});
-				}
-				break;
-
 			case uc.Entities.Light.COMMANDS.ON:
 				let hueParams = { on: true };
 
@@ -398,7 +364,6 @@ async function addAvailableLights() {
 	lights.forEach((light) => {
 		let features = [
 			uc.Entities.Light.FEATURES.ON_OFF,
-			uc.Entities.Light.FEATURES.TOGGLE,
 		];
 
 		let values = new Map([
@@ -500,9 +465,9 @@ async function startPolling() {
 
 					const state = light.state;
 
-					if (state.bri && configredEntity.attributes.state == uc.Entities.Light.STATES.ON) {
+					if (state.bri) {
 						if (configredEntity.attributes.brightness != state.bri) {
-							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
+							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], configredEntity.attributes.state == uc.Entities.Light.STATES.ON ? state.bri : 0);
 						}
 					}
 
