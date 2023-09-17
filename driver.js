@@ -493,22 +493,24 @@ async function startPolling() {
 
 					if (configredEntity == null) {
 						console.error("Cannot find configured entity with id", entity.entity_id);
+						response.set([uc.Entities.Light.ATTRIBUTES.STATE], uc.Entities.Light.STATES.UNAVAILABLE);
+						uc.configuredEntities.updateEntityAttributes(entity.entity_id, response);
 						return;
 					}
 
 					const state = light.state;
 
-					if (light.state) {
-						const entityState = state?.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF || uc.Entities.Light.STATES.UNAVAILABLE;
-						if (configredEntity.attributes.state != entityState) {
-							response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
-							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state?.on ? state.bri : 0);
-						}
-					}
-
 					if (state.bri) {
 						if (configredEntity.attributes.brightness != state.bri) {
 							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.bri);
+						}
+					}
+
+					if (light.state) {
+						const entityState = state.on ? uc.Entities.Light.STATES.ON : uc.Entities.Light.STATES.OFF;
+						if (configredEntity.attributes.state != entityState) {
+							response.set([uc.Entities.Light.ATTRIBUTES.STATE], entityState);
+							response.set([uc.Entities.Light.ATTRIBUTES.BRIGHTNESS], state.on ? state.bri : 0);
 						}
 					}
 
