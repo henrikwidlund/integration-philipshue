@@ -1,9 +1,9 @@
 {
 	"driver_id": "uc_hue_driver",
-	"version": "0.2.10",
+	"version": "0.2.11",
 	"min_core_api": "0.0.2",
 	"name": { "en": "Philips Hue" },
-	"icon": "custom:philips-hue.png",
+	"icon": "uc:integration",
 	"description": {
 		"en": "Control your Philips Hue lights with Remote Two."
 	},
