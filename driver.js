@@ -18,7 +18,7 @@ uc.on(
 		const entity = await uc.configuredEntities.getEntity(entity_id);
 		if (entity == null) {
 			console.error("Cannot find entity", entity_id);
-			uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
+			await uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 			return;
 		}
 
@@ -55,13 +55,13 @@ uc.on(
 
 				authenticatedApi.lights
 					.setLightState(entity_id, hueParams)
-					.then((result) => {
+					.then(async (result) => {
 						console.log("Result:", result);
-						uc.acknowledgeCommand(wsHandle);
+						await uc.acknowledgeCommand(wsHandle);
 					})
-					.catch((error) => {
+					.catch(async (error) => {
 						console.error("Error setting light state", String(error));
-						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
+						await uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 					});
 				break;
 
@@ -70,18 +70,18 @@ uc.on(
 					.setLightState(entity_id, {
 						on: false,
 					})
-					.then((result) => {
+					.then(async (result) => {
 						console.log("Result:", result);
-						uc.acknowledgeCommand(wsHandle, true);
+						await uc.acknowledgeCommand(wsHandle, true);
 					})
-					.catch((error) => {
+					.catch(async (error) => {
 						console.error("Error setting light state", String(error));
-						uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
+						await uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.SERVICE_UNAVAILABLE);
 					});
 				break;
 
 			default:
-				uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.BAD_REQUEST);
+				await uc.acknowledgeCommand(wsHandle, uc.STATUS_CODES.BAD_REQUEST);
 				break;
 		}
 	}
@@ -123,7 +123,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 
 	console.log(`Setting up driver. Setup data: ${setupData}`);
 
-	await uc.acknowledgeCommand(wsHandle);
+	await await uc.acknowledgeCommand(wsHandle);
 	console.log('Acknowledged driver setup');
 
 	// Update setup progress
@@ -169,7 +169,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER, async (wsHandle, setupData) => {
 
 uc.on(uc.EVENTS.SETUP_DRIVER_USER_DATA, async (wsHandle, data) => {
 	console.log('Received user input for driver setup: sending OK');
-	await uc.acknowledgeCommand(wsHandle);
+	await await uc.acknowledgeCommand(wsHandle);
 	await uc.driverSetupProgress(wsHandle);
 
 	if (data == null || !('choice' in data)) {
@@ -187,7 +187,7 @@ uc.on(uc.EVENTS.SETUP_DRIVER_USER_DATA, async (wsHandle, data) => {
 
 uc.on(uc.EVENTS.SETUP_DRIVER_USER_CONFIRMATION, async (wsHandle) => {
 	console.log('Received user confirmation for driver setup: sending OK');
-	await uc.acknowledgeCommand(wsHandle);
+	await await uc.acknowledgeCommand(wsHandle);
 
 	// Update setup progress
 	await uc.driverSetupProgress(wsHandle);
