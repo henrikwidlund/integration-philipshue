@@ -72,7 +72,7 @@ uc.on(
 					})
 					.then(async (result) => {
 						console.log("Result:", result);
-						await uc.acknowledgeCommand(wsHandle, true);
+						await uc.acknowledgeCommand(wsHandle);
 					})
 					.catch(async (error) => {
 						console.error("Error setting light state", String(error));
