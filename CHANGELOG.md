@@ -9,9 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
+### Added
+
+- Manual Hue hub setup option ([#39](https://github.com/unfoldedcircle/integration-philipshue/pull/39)).
+
 ### Changed
 
-- Philips hue v2 API ([#19](https://github.com/unfoldedcircle/integration-philipshue/pull/19)).
+- **BREAKING CHANGE** Using Philips Hue v2 API. V1 Hue hubs are no longer supported ([#19](https://github.com/unfoldedcircle/integration-philipshue/pull/19)).
+- Open Source release ([#20](https://github.com/unfoldedcircle/integration-philipshue/issues/20)).
+- Node.js v22.13 and package updates ([#31](https://github.com/unfoldedcircle/integration-philipshue/pull/31)).
+- Logging prefixes ([#40](https://github.com/unfoldedcircle/integration-philipshue/pull/40)).
+
+### Fixed
+
+- Event stream reconnection ([#34](https://github.com/unfoldedcircle/integration-philipshue/pull/34)).
+- Command error propagation and improve entity state handling ([#36](https://github.com/unfoldedcircle/integration-philipshue/pull/36)).
+- Emit hub configuration change events ([#41](https://github.com/unfoldedcircle/integration-philipshue/pull/41)).
+- Only set entity state to unavailable for auth errors ([#42](https://github.com/unfoldedcircle/integration-philipshue/pull/42)).
 
 ---
 
