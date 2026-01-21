@@ -126,13 +126,12 @@ class HueApi implements ResourceApi {
     if (!this.hubUrl) {
       throw new HueError("Hub URL is required", StatusCodes.ServiceUnavailable);
     }
-    // TODO verify if new Hue pro hub still allows http access
-    const hubHttp = this.hubUrl.replace("https://", "http://");
+
     try {
-      const { data } = await this.axiosInstance.get<HubConfig>(`${hubHttp}/api/config`);
+      const { data } = await this.axiosInstance.get<HubConfig>("/api/config");
       return data;
     } catch (error) {
-      this.handleError(error, "GET", `${hubHttp}/api/config`);
+      this.handleError(error, "GET", `${this.hubUrl}/api/config`);
     }
   }
 
@@ -148,7 +147,7 @@ class HueApi implements ResourceApi {
       throw new HueError("Failed to generate auth key: Hub URL is required", StatusCodes.ServiceUnavailable);
     }
     try {
-      const { data } = await this.axiosInstance.post<AuthenticateResult[]>(`/api`, {
+      const { data } = await this.axiosInstance.post<AuthenticateResult[]>("/api", {
         devicetype: deviceType,
         generateclientkey: true
       });
