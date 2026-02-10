@@ -161,11 +161,12 @@ class PhilipsHue {
     params?: { [key: string]: string | number | boolean }
   ) {
     const singleLight = !("groupType" in entityConfig);
+    const entityId = singleLight ? entity.id : this.groupedLightIdToGroupId[entity.id] || entity.id;
     try {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entity.id, currentState !== LightStates.On, singleLight);
+          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, singleLight);
           break;
         }
         case LightCommands.On: {
@@ -185,11 +186,11 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
           }
-          await this.hueApi.lightResource.updateLightState(entity.id, req, singleLight);
+          await this.hueApi.lightResource.updateLightState(entityId, req, singleLight);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entity.id, false, singleLight);
+          await this.hueApi.lightResource.setOn(entityId, false, singleLight);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
