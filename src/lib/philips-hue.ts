@@ -16,7 +16,7 @@ import {
   LightStates,
   StatusCodes
 } from "@unfoldedcircle/integration-api";
-import Config, { ConfigEvent } from "../config.js";
+import Config, { ConfigEvent, GroupConfig, LightConfig } from "../config.js";
 import log from "../log.js";
 import {
   brightnessToPercent,
@@ -34,12 +34,15 @@ import HueEventStream from "./hue-api/event-stream.js";
 import { HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
 import PhilipsHueSetup from "./setup.js";
 
+export type GroupWithServices = GroupConfig & { id: string; services: { rid: string; rtype: string }[] };
+
 class PhilipsHue {
   private uc: IntegrationAPI;
   private readonly config: Config;
   private readonly setup: PhilipsHueSetup;
   private hueApi: HueApi;
   private eventStream: HueEventStream;
+  private groupedLightIdToGroupId: Record<string, string> = {};
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -59,6 +62,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubConfig.username);
     }
     this.readEntitiesFromConfig();
+    this.updateGroupedLightMapping();
     this.setupDriverEvents();
     this.setupEventStreamEvents();
     log.info("Philips Hue driver initialized");
@@ -68,7 +72,22 @@ class PhilipsHue {
     const lights = this.config.getLights();
     for (const light of lights) {
       const lightEntity = new Light(light.id, light.name, { features: light.features });
-      this.addAvailableLight(lightEntity);
+      this.addAvailableLight(lightEntity, light);
+    }
+  }
+
+  private updateGroupedLightMapping() {
+    this.groupedLightIdToGroupId = {};
+    const lights = this.config.getLights();
+    for (const light of lights) {
+      if ("groupType" in light && light.groupType && (light as GroupWithServices).services) {
+        const group = light as GroupWithServices;
+        for (const service of group.services) {
+          if (service.rtype === "grouped_light") {
+            this.groupedLightIdToGroupId[service.rid] = group.id;
+          }
+        }
+      }
     }
   }
 
@@ -109,6 +128,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubCfg.username);
       this.eventStream.connect(getHubUrl(hubCfg.ip), hubCfg.username);
     }
+    this.updateGroupedLightMapping();
   }
 
   private async onCfgRemove(_bridgeId?: string) {
@@ -124,21 +144,28 @@ class PhilipsHue {
   private handleConfigEvent(event: ConfigEvent) {
     if (event.type === "light-added") {
       const light = new Light(event.data.id, event.data.name, { features: event.data.features });
-      this.addAvailableLight(light);
+      this.addAvailableLight(light, event.data);
+      this.updateGroupedLightMapping();
     }
   }
 
-  private addAvailableLight(light: Light) {
-    light.setCmdHandler(this.handleLightCmd.bind(this));
+  private addAvailableLight(light: Light, entityConfig: LightConfig | GroupConfig) {
+    light.setCmdHandler((entity, command, params) => this.handleLightCmd(entity, entityConfig, command, params));
     this.uc.addAvailableEntity(light);
   }
 
-  private async handleLightCmd(entity: Entity, command: string, params?: { [key: string]: string | number | boolean }) {
+  private async handleLightCmd(
+    entity: Entity,
+    entityConfig: LightConfig | GroupConfig,
+    command: string,
+    params?: { [key: string]: string | number | boolean }
+  ) {
+    const singleLight = !("groupType" in entityConfig);
     try {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entity.id, currentState !== LightStates.On);
+          await this.hueApi.lightResource.setOn(entity.id, currentState !== LightStates.On, singleLight);
           break;
         }
         case LightCommands.On: {
@@ -158,11 +185,11 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
           }
-          await this.hueApi.lightResource.updateLightState(entity.id, req);
+          await this.hueApi.lightResource.updateLightState(entity.id, req, singleLight);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entity.id, false);
+          await this.hueApi.lightResource.setOn(entity.id, false, singleLight);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
@@ -191,8 +218,9 @@ class PhilipsHue {
   private handleEventStreamUpdate(event: HueEvent) {
     for (const data of event.data) {
       if (["light", "grouped_light"].includes(data.type)) {
+        const entityId = data.type === "grouped_light" ? this.groupedLightIdToGroupId[data.id] || data.id : data.id;
         log.debug("event stream light update: %s", JSON.stringify(data));
-        this.syncLightState(data.id, data).catch((error) =>
+        this.syncLightState(entityId, data).catch((error) =>
           log.error("Syncing lights failed for event stream update:", error)
         );
       }
@@ -289,11 +317,6 @@ class PhilipsHue {
   }
 
   private async syncLightState(entityId: string, light: Partial<LightResource>) {
-    // only `light` types are supported at the moment: ignore everything else
-    if (light.type !== "light") {
-      return;
-    }
-
     const entity = this.uc.getConfiguredEntities().getEntity(entityId);
     if (!entity) {
       log.debug("entity is not configured, skipping sync", entityId);
@@ -306,10 +329,8 @@ class PhilipsHue {
     if (light.dimming) {
       lightState[LightAttributes.Brightness] = percentToBrightness(light.dimming.brightness);
     }
-
     if (light.color_temperature && light.color_temperature.mirek_valid) {
-      const entityColorTemp = mirekToColorTemp(light.color_temperature.mirek);
-      lightState[LightAttributes.ColorTemperature] = entityColorTemp;
+      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(light.color_temperature.mirek);
     }
 
     if (light.color && light.color.xy) {

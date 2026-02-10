@@ -206,3 +206,127 @@ export interface HueEvent {
   }[];
   creationtime: string;
 }
+
+export interface GroupResource {
+  id: string;
+  id_v1?: string;
+  children: ResourceIdentifier[];
+  services: ResourceIdentifier[];
+  type: ResourceType;
+  metadata: {
+    name: string;
+    archetype: Archetype;
+  };
+}
+
+export interface GroupResourceWithLights {
+  id: string;
+  id_v1?: string;
+  metadata: {
+    name: string;
+    archetype: Archetype;
+  };
+  groupedLights: LightResource[];
+}
+
+export interface ResourceIdentifier {
+  rid: string;
+  rtype: ResourceType;
+}
+
+export type GroupType = "zone" | "room";
+
+export type ResourceType =
+  | "device"
+  | "bridge_home"
+  | "room"
+  | "zone"
+  | "service_group"
+  | "light"
+  | "button"
+  | "bell_button"
+  | "relative_rotary"
+  | "temperature"
+  | "light_level"
+  | "motion"
+  | "camera_motion"
+  | "entertainment"
+  | "contact"
+  | "tamper"
+  | "convenience_area_motion"
+  | "security_area_motion"
+  | "speaker"
+  | "grouped_light"
+  | "grouped_motion"
+  | "grouped_light_level"
+  | "device_power"
+  | "device_software_update"
+  | "zigbee_connectivity"
+  | "zgp_connectivity"
+  | "bridge"
+  | "motion_area_candidate"
+  | "wifi_connectivity"
+  | "zigbee_device_discovery"
+  | "homekit"
+  | "matter"
+  | "matter_fabric"
+  | "scene"
+  | "entertainment_configuration"
+  | "public_image"
+  | "auth_v1"
+  | "behavior_script"
+  | "behavior_instance"
+  | "geofence_client"
+  | "geolocation"
+  | "smart_scene"
+  | "motion_area_configuration"
+  | "clip"
+  | string;
+
+export type Archetype =
+  | "living_room"
+  | "kitchen"
+  | "dining"
+  | "bedroom"
+  | "kids_bedroom"
+  | "bathroom"
+  | "nursery"
+  | "recreation"
+  | "office"
+  | "gym"
+  | "hallway"
+  | "toilet"
+  | "front_door"
+  | "garage"
+  | "terrace"
+  | "garden"
+  | "driveway"
+  | "carport"
+  | "home"
+  | "downstairs"
+  | "upstairs"
+  | "top_floor"
+  | "attic"
+  | "guest_room"
+  | "staircase"
+  | "lounge"
+  | "man_cave"
+  | "computer"
+  | "studio"
+  | "music"
+  | "tv"
+  | "reading"
+  | "closet"
+  | "storage"
+  | "laundry_room"
+  | "balcony"
+  | "porch"
+  | "barbecue"
+  | "pool"
+  | "other"
+  | string;
+
+export interface GroupResourceResponse {
+  errors: { description: string }[];
+  data: GroupResource[];
+}

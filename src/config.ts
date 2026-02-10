@@ -10,6 +10,7 @@ import EventEmitter from "node:events";
 import fs from "fs";
 import path from "path";
 import log from "./log.js";
+import { GroupType } from "./lib/hue-api/types.js";
 
 const CFG_FILENAME = "philips_hue_config.json";
 
@@ -17,14 +18,20 @@ export interface LightConfig {
   name: string;
   features: LightFeatures[];
 }
+export interface GroupConfig {
+  name: string;
+  groupType: GroupType;
+  groupedLights: string[];
+  features: LightFeatures[];
+}
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
-  lights: { [key: string]: LightConfig };
+  lights: { [key: string]: LightConfig | GroupConfig };
 }
 
 export type ConfigEvent =
-  | { type: "light-added"; data: LightConfig & { id: string } }
-  | { type: "light-updated"; data: LightConfig & { id: string } };
+  | { type: "light-added"; data: (LightConfig & { id: string }) | (GroupConfig & { id: string }) }
+  | { type: "light-updated"; data: (LightConfig & { id: string }) | (GroupConfig & { id: string }) };
 
 class Config extends EventEmitter {
   private config: PhilipsHueConfig = { lights: {} };
@@ -64,7 +71,7 @@ class Config extends EventEmitter {
     }
   }
 
-  public addLight(id: string, light: LightConfig) {
+  public addLight(id: string, light: LightConfig | GroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
     if (this.cb) {
@@ -81,7 +88,7 @@ class Config extends EventEmitter {
     this.saveToFile();
   }
 
-  public getLight(id: string): LightConfig | undefined {
+  public getLight(id: string): LightConfig | GroupConfig | undefined {
     return this.config.lights[id];
   }
 

@@ -12,6 +12,7 @@ import log from "../../log.js";
 import { delay, normalizeBridgeId } from "../../util.js";
 import LightResource from "./light-resource.js";
 import { AuthenticateResult, AuthenticateSuccess, HubConfig } from "./types.js";
+import GroupResource from "./group-resource.js";
 
 const MAX_RETRIES = 3;
 
@@ -46,11 +47,13 @@ export interface ResourceApi {
 class HueApi implements ResourceApi {
   private hubUrl?: string;
   public readonly lightResource: LightResource;
+  public readonly groupResource: GroupResource;
   private axiosInstance: AxiosInstance;
 
   constructor(hubUrl?: string, requestTimeout: number = 1500) {
     this.hubUrl = hubUrl;
     this.lightResource = new LightResource(this);
+    this.groupResource = new GroupResource(this);
     this.axiosInstance = axios.create({
       baseURL: this.hubUrl,
       timeout: requestTimeout,

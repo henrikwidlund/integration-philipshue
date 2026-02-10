@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { LightResource } from "./lib/hue-api/types.js";
+import { GroupResourceWithLights, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 
@@ -35,6 +35,24 @@ export function getLightFeatures(light: LightResource) {
     features.push(LightFeatures.ColorTemperature);
   }
   if (light.color?.xy) {
+    features.push(LightFeatures.Color);
+  }
+  return features;
+}
+
+export function getGroupFeatures(group: GroupResourceWithLights) {
+  const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
+  if (group.groupedLights.length === 0) {
+    return features;
+  }
+
+  if (group.groupedLights.some((light) => light.dimming)) {
+    features.push(LightFeatures.Dim);
+  }
+  if (group.groupedLights.some((light) => light.color_temperature?.mirek_schema)) {
+    features.push(LightFeatures.ColorTemperature);
+  }
+  if (group.groupedLights.some((light) => light.color?.xy)) {
     features.push(LightFeatures.Color);
   }
   return features;
@@ -68,12 +86,10 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
 
   const ScaledS = Math.round(S * 255);
 
-  const res = {
+  return {
     hue: Math.round(H) % 360,
     sat: Math.max(0, Math.min(ScaledS, 255))
   };
-
-  return res;
 }
 
 export function convertHSVtoXY(hue: number, saturation: number, value: number) {

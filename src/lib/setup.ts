@@ -19,9 +19,9 @@ import {
 import { Bonjour } from "bonjour-service";
 import Config from "../config.js";
 import log from "../log.js";
-import { convertImageToBase64, delay, getHubUrl, getLightFeatures, i18all } from "../util.js";
+import { convertImageToBase64, delay, getHubUrl, getLightFeatures, getGroupFeatures, i18all } from "../util.js";
 import HueApi from "./hue-api/api.js";
-import { LightResource } from "./hue-api/types.js";
+import { LightResource, GroupResourceWithLights, GroupType } from "./hue-api/types.js";
 import os from "os";
 import * as uc from "@unfoldedcircle/integration-api";
 import net from "net";
@@ -282,8 +282,12 @@ class PhilipsHueSetup {
           username: authKey.username,
           bridgeId: this.selectedHub.id
         });
-        const data = await this.hueApi.lightResource.getLights();
-        this.addAvailableLights(data);
+        const lightData = await this.hueApi.lightResource.getLights();
+        this.addAvailableLights(lightData);
+        const zoneData = await this.hueApi.groupResource.getGroupsWithLights("zone");
+        this.addAvailableGroups(zoneData, "zone");
+        const roomData = await this.hueApi.groupResource.getGroupsWithLights("room");
+        this.addAvailableGroups(roomData, "room");
         return new SetupComplete();
       } catch (error) {
         log.error("Failed to get hub config", error);
@@ -323,6 +327,18 @@ class PhilipsHueSetup {
     lights.forEach((light) => {
       const features = getLightFeatures(light);
       this.config.addLight(light.id, { name: light.metadata.name, features });
+    });
+  }
+
+  private addAvailableGroups(groups: GroupResourceWithLights[], groupType: GroupType) {
+    groups.forEach((group) => {
+      const features = getGroupFeatures(group);
+      this.config.addLight(group.id, {
+        name: group.metadata.name,
+        features,
+        groupedLights: group.groupedLights.map((light) => light.id),
+        groupType
+      });
     });
   }
 
