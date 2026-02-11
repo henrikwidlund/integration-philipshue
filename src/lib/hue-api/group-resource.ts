@@ -38,49 +38,38 @@ class GroupResource {
     return res.data[0];
   }
 
-  async getGroupsWithLights(): Promise<Map<GroupType, GroupResourceWithGroupLight[]>> {
+  private cleanGroupsWithLights(
+    groups: GroupResourceData[],
+    groupedLightById: Map<string, LightResource>
+  ): GroupResourceWithGroupLight[] {
+    return (
+      groups
+        .map((group) => ({
+          ...group,
+          services: group.services.filter((service) => service.rtype === "grouped_light"),
+          children: group.children.filter((child) => child.rtype === "light")
+        }))
+        .filter((group) => group.services.length > 0 && group.children.length > 0)
+        .map((group) => {
+          const groupedLight = groupedLightById.get(group.services[0].rid);
+          if (!groupedLight) {
+            throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
+          }
+          return {
+            ...group,
+            groupLight: groupedLight
+          };
+        }) ?? []
+    );
+  }
+
+  public async getGroupsWithLights(): Promise<Map<GroupType, GroupResourceWithGroupLight[]>> {
     const roomGroups = await this.getGroups("room");
     const zoneGroups = await this.getGroups("zone");
     const groupedLights = await this.getGroupedLights();
     const groupedLightById = new Map(groupedLights.map((light) => [light.id, light]));
-    const cleanedRoomGroups =
-      roomGroups
-        .map((group) => ({
-          ...group,
-          services: group.services.filter((service) => service.rtype === "grouped_light"),
-          children: group.children.filter((child) => child.rtype === "light")
-        }))
-        .filter((group) => group.services.length > 0 && group.children.length > 0)
-        .map((group) => {
-          const groupedLight = groupedLightById.get(group.services[0].rid);
-          if (!groupedLight) {
-            throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
-          }
-          return {
-            ...group,
-            groupLight: groupedLight
-          };
-        }) ?? [];
-
-    const cleanedZoneGroups =
-      zoneGroups
-        .map((group) => ({
-          ...group,
-          services: group.services.filter((service) => service.rtype === "grouped_light"),
-          children: group.children.filter((child) => child.rtype === "light")
-        }))
-        .filter((group) => group.services.length > 0 && group.children.length > 0)
-        .map((group) => {
-          const groupedLight = groupedLightById.get(group.services[0].rid);
-          if (!groupedLight) {
-            throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
-          }
-          return {
-            ...group,
-            groupLight: groupedLight
-          };
-        }) ?? [];
-
+    const cleanedRoomGroups = this.cleanGroupsWithLights(roomGroups, groupedLightById);
+    const cleanedZoneGroups = this.cleanGroupsWithLights(zoneGroups, groupedLightById);
     return new Map([
       ["room", cleanedRoomGroups],
       ["zone", cleanedZoneGroups]
