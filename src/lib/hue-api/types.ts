@@ -234,7 +234,8 @@ export interface ResourceIdentifier {
 
 export type GroupType = "zone" | "room";
 
-export type ResourceType =
+export type ResourceType = KnownResourceType | (string & {});
+export type KnownResourceType =
   | "device"
   | "bridge_home"
   | "room"
@@ -278,10 +279,10 @@ export type ResourceType =
   | "geolocation"
   | "smart_scene"
   | "motion_area_configuration"
-  | "clip"
-  | string;
+  | "clip";
 
-export type Archetype =
+export type Archetype = KnownArchetype | (string & {});
+export type KnownArchetype =
   | "living_room"
   | "kitchen"
   | "dining"
@@ -321,8 +322,7 @@ export type Archetype =
   | "porch"
   | "barbecue"
   | "pool"
-  | "other"
-  | string;
+  | "other";
 
 export interface GroupResourceResponse {
   errors: { description: string }[];

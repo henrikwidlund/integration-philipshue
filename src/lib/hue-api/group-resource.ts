@@ -65,9 +65,11 @@ class GroupResource {
   }
 
   public async getGroupsWithLights(): Promise<Map<GroupType, GroupResourceWithGroupLight[]>> {
-    const roomGroups = await this.getGroups("room");
-    const zoneGroups = await this.getGroups("zone");
-    const groupedLights = await this.getGroupedLights();
+    const [roomGroups, zoneGroups, groupedLights] = await Promise.all([
+      this.getGroups("room"),
+      this.getGroups("zone"),
+      this.getGroupedLights()
+    ]);
     const groupedLightById = new Map(groupedLights.map((light) => [light.id, light]));
     const cleanedRoomGroups = this.cleanGroupsWithLights(roomGroups, groupedLightById);
     const cleanedZoneGroups = this.cleanGroupsWithLights(zoneGroups, groupedLightById);
