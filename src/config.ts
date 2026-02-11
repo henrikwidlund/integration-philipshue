@@ -18,11 +18,9 @@ export interface LightConfig {
   name: string;
   features: LightFeatures[];
 }
-export interface GroupConfig {
-  name: string;
+export interface GroupConfig extends LightConfig {
   groupType: GroupType;
   groupedLightId: string;
-  features: LightFeatures[];
 }
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };

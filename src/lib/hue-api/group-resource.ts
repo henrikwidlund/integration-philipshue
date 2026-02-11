@@ -43,22 +43,25 @@ class GroupResource {
     groupedLightById: Map<string, LightResource>
   ): GroupResourceWithGroupLight[] {
     return groups
-      .map((group) => ({
-        ...group,
-        services: group.services.filter((service) => service.rtype === "grouped_light"),
-        children: group.children.filter((child) => child.rtype === "light")
-      }))
-      .filter((group) => group.services.length > 0 && group.children.length > 0)
       .map((group) => {
-        const groupedLight = groupedLightById.get(group.services[0].rid);
+        const services = group.services.filter((service) => service.rtype === "grouped_light");
+        const children = group.children.filter((child) => child.rtype === "light");
+        if (services.length === 0 || children.length === 0) {
+          return null;
+        }
+        const groupedLight = groupedLightById.get(services[0].rid);
         if (!groupedLight) {
           throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
         }
         return {
-          ...group,
+          id: group.id,
+          metadata: {
+            name: group.metadata.name
+          },
           groupLight: groupedLight
         };
-      });
+      })
+      .filter((group): group is GroupResourceWithGroupLight => group !== null);
   }
 
   public async getGroupsWithLights(): Promise<Map<GroupType, GroupResourceWithGroupLight[]>> {
