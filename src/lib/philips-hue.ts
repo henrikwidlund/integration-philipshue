@@ -78,7 +78,7 @@ class PhilipsHue {
     this.groupedLightIdToGroupId = {};
     const lights = this.config.getLights();
     for (const light of lights) {
-      if ("groupType" in light && light.groupType) {
+      if (this.isGroupConfig(light) && light.groupType) {
         const group = light as GroupConfig;
         this.groupedLightIdToGroupId[group.groupedLightId] = light.id;
       }
@@ -148,14 +148,19 @@ class PhilipsHue {
     this.uc.addAvailableEntity(light);
   }
 
+  private isGroupConfig(entityConfig: LightConfig | GroupConfig): entityConfig is GroupConfig {
+    return "groupType" in entityConfig;
+  }
+
   private async handleLightCmd(
     entity: Entity,
     entityConfig: LightConfig | GroupConfig,
     command: string,
     params?: { [key: string]: string | number | boolean }
   ) {
-    const singleLight = !("groupType" in entityConfig);
-    const entityId = singleLight ? entity.id : (entityConfig as GroupConfig).groupedLightId;
+    const isGroup = this.isGroupConfig(entityConfig);
+    const singleLight = !isGroup;
+    const entityId = singleLight ? entity.id : entityConfig.groupedLightId;
     if (!entityId) {
       log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
       return StatusCodes.ServerError;
