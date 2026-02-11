@@ -41,18 +41,7 @@ export function getLightFeatures(light: LightResource) {
 }
 
 export function getGroupFeatures(group: GroupResourceWithGroupLight) {
-  const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
-
-  if (group.groupLight.dimming) {
-    features.push(LightFeatures.Dim);
-  }
-  if (group.groupLight.color_temperature?.mirek_schema) {
-    features.push(LightFeatures.ColorTemperature);
-  }
-  if (group.groupLight.color?.xy) {
-    features.push(LightFeatures.Color);
-  }
-  return features;
+  return getLightFeatures(group.groupLight);
 }
 
 export function convertXYtoHSV(x: number, y: number, lightness = 1) {
