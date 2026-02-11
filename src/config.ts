@@ -22,14 +22,16 @@ export interface GroupConfig extends LightConfig {
   groupType: GroupType;
   groupedLightId: string;
 }
+export type LightOrGroupConfig = LightConfig | GroupConfig;
+
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
   lights: { [key: string]: LightConfig | GroupConfig };
 }
 
 export type ConfigEvent =
-  | { type: "light-added"; data: (LightConfig & { id: string }) | (GroupConfig & { id: string }) }
-  | { type: "light-updated"; data: (LightConfig & { id: string }) | (GroupConfig & { id: string }) };
+  | { type: "light-added"; data: LightOrGroupConfig & { id: string } }
+  | { type: "light-updated"; data: LightOrGroupConfig & { id: string } };
 
 class Config extends EventEmitter {
   private config: PhilipsHueConfig = { lights: {} };
@@ -69,7 +71,7 @@ class Config extends EventEmitter {
     }
   }
 
-  public addLight(id: string, light: LightConfig | GroupConfig) {
+  public addLight(id: string, light: LightOrGroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
     if (this.cb) {
@@ -86,7 +88,7 @@ class Config extends EventEmitter {
     this.saveToFile();
   }
 
-  public getLight(id: string): LightConfig | GroupConfig | undefined {
+  public getLight(id: string): LightOrGroupConfig | undefined {
     return this.config.lights[id];
   }
 
