@@ -21,7 +21,7 @@ export interface LightConfig {
 export interface GroupConfig {
   name: string;
   groupType: GroupType;
-  groupedLights: string[];
+  groupedLightId: string;
   features: LightFeatures[];
 }
 interface PhilipsHueConfig {

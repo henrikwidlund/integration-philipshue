@@ -34,8 +34,6 @@ import HueEventStream from "./hue-api/event-stream.js";
 import { HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
 import PhilipsHueSetup from "./setup.js";
 
-export type GroupWithServices = GroupConfig & { id: string; services: { rid: string; rtype: string }[] };
-
 class PhilipsHue {
   private uc: IntegrationAPI;
   private readonly config: Config;
@@ -80,13 +78,9 @@ class PhilipsHue {
     this.groupedLightIdToGroupId = {};
     const lights = this.config.getLights();
     for (const light of lights) {
-      if ("groupType" in light && light.groupType && (light as GroupWithServices).services) {
-        const group = light as GroupWithServices;
-        for (const service of group.services) {
-          if (service.rtype === "grouped_light") {
-            this.groupedLightIdToGroupId[service.rid] = group.id;
-          }
-        }
+      if ("groupType" in light && light.groupType) {
+        const group = light as GroupConfig;
+        this.groupedLightIdToGroupId[group.groupedLightId] = light.id;
       }
     }
   }
@@ -161,7 +155,12 @@ class PhilipsHue {
     params?: { [key: string]: string | number | boolean }
   ) {
     const singleLight = !("groupType" in entityConfig);
-    const entityId = singleLight ? entity.id : this.groupedLightIdToGroupId[entity.id] || entity.id;
+    const entityId = singleLight ? entity.id : (entityConfig as GroupConfig).groupedLightId;
+    if (!entityId) {
+      log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
+      return StatusCodes.ServerError;
+    }
+
     try {
       switch (command) {
         case LightCommands.Toggle: {

@@ -219,14 +219,12 @@ export interface GroupResource {
   };
 }
 
-export interface GroupResourceWithLights {
+export interface GroupResourceWithGroupLight {
   id: string;
-  id_v1?: string;
   metadata: {
     name: string;
-    archetype: Archetype;
   };
-  groupedLights: LightResource[];
+  groupLight: LightResource;
 }
 
 export interface ResourceIdentifier {

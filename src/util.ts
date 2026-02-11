@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { GroupResourceWithLights, LightResource } from "./lib/hue-api/types.js";
+import { GroupResourceWithGroupLight, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 
@@ -40,19 +40,16 @@ export function getLightFeatures(light: LightResource) {
   return features;
 }
 
-export function getGroupFeatures(group: GroupResourceWithLights) {
+export function getGroupFeatures(group: GroupResourceWithGroupLight) {
   const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
-  if (group.groupedLights.length === 0) {
-    return features;
-  }
 
-  if (group.groupedLights.some((light) => light.dimming)) {
+  if (group.groupLight.dimming) {
     features.push(LightFeatures.Dim);
   }
-  if (group.groupedLights.some((light) => light.color_temperature?.mirek_schema)) {
+  if (group.groupLight.color_temperature?.mirek_schema) {
     features.push(LightFeatures.ColorTemperature);
   }
-  if (group.groupedLights.some((light) => light.color?.xy)) {
+  if (group.groupLight.color?.xy) {
     features.push(LightFeatures.Color);
   }
   return features;

@@ -10,7 +10,7 @@ import { StatusCodes } from "@unfoldedcircle/integration-api";
 import {
   GroupResource as GroupResourceData,
   GroupResourceResponse,
-  GroupResourceWithLights,
+  GroupResourceWithGroupLight,
   GroupType,
   LightResource,
   LightResourceResult
@@ -38,9 +38,10 @@ class GroupResource {
     return res.data[0];
   }
 
-  async getGroupsWithLights(groupType: GroupType): Promise<GroupResourceWithLights[]> {
+  async getGroupsWithLights(groupType: GroupType): Promise<GroupResourceWithGroupLight[]> {
     const groups = await this.getGroups(groupType);
     const groupedLights = await this.getGroupedLights();
+    const groupedLightById = new Map(groupedLights.map((light) => [light.id, light]));
     let cleanedGroups = groups.map((group) => ({
       ...group,
       services: group.services.filter((service) => service.rtype === "grouped_light"),
@@ -50,10 +51,13 @@ class GroupResource {
     cleanedGroups = cleanedGroups.filter((group) => group.services.length > 0 && group.children.length > 0);
 
     return cleanedGroups.map((group) => {
-      const groupedLight = groupedLights.filter((light) => light.id === group.services[0].rid);
+      const groupedLight = groupedLightById.get(group.services[0].rid);
+      if (!groupedLight) {
+        throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
+      }
       return {
         ...group,
-        groupedLights: groupedLight
+        groupLight: groupedLight
       };
     });
   }

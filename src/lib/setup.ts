@@ -21,7 +21,7 @@ import Config from "../config.js";
 import log from "../log.js";
 import { convertImageToBase64, delay, getHubUrl, getLightFeatures, getGroupFeatures, i18all } from "../util.js";
 import HueApi from "./hue-api/api.js";
-import { LightResource, GroupResourceWithLights, GroupType } from "./hue-api/types.js";
+import { LightResource, GroupResourceWithGroupLight, GroupType } from "./hue-api/types.js";
 import os from "os";
 import * as uc from "@unfoldedcircle/integration-api";
 import net from "net";
@@ -330,13 +330,13 @@ class PhilipsHueSetup {
     });
   }
 
-  private addAvailableGroups(groups: GroupResourceWithLights[], groupType: GroupType) {
+  private addAvailableGroups(groups: GroupResourceWithGroupLight[], groupType: GroupType) {
     groups.forEach((group) => {
       const features = getGroupFeatures(group);
       this.config.addLight(group.id, {
         name: group.metadata.name,
         features,
-        groupedLights: group.groupedLights.map((light) => light.id),
+        groupedLightId: group.groupLight.id,
         groupType
       });
     });
