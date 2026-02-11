@@ -138,8 +138,8 @@ class PhilipsHue {
     if (event.type === "light-added") {
       const light = new Light(event.data.id, event.data.name, { features: event.data.features });
       this.addAvailableLight(light);
-      this.updateGroupedLightMapping();
     }
+    this.updateGroupedLightMapping();
   }
 
   private addAvailableLight(light: Light) {
