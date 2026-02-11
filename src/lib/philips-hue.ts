@@ -70,7 +70,7 @@ class PhilipsHue {
     const lights = this.config.getLights();
     for (const light of lights) {
       const lightEntity = new Light(light.id, light.name, { features: light.features });
-      this.addAvailableLight(lightEntity, light);
+      this.addAvailableLight(lightEntity);
     }
   }
 
@@ -137,14 +137,31 @@ class PhilipsHue {
   private handleConfigEvent(event: ConfigEvent) {
     if (event.type === "light-added") {
       const light = new Light(event.data.id, event.data.name, { features: event.data.features });
-      this.addAvailableLight(light, event.data);
+      this.addAvailableLight(light);
       this.updateGroupedLightMapping();
     }
   }
 
-  private addAvailableLight(light: Light, entityConfig: LightConfig | GroupConfig) {
-    light.setCmdHandler((entity, command, params) => this.handleLightCmd(entity, entityConfig, command, params));
+  private addAvailableLight(light: Light) {
+    light.setCmdHandler((entity, command, params) => {
+      const latestConfig = this.getEntityConfigById(entity.id);
+      if (!latestConfig) {
+        log.error("No config found for entity: %s", entity.id);
+        return Promise.resolve(StatusCodes.ServerError);
+      }
+      return this.handleLightCmd(entity, latestConfig, command, params);
+    });
     this.uc.addAvailableEntity(light);
+  }
+
+  private getEntityConfigById(entityId: string): LightConfig | GroupConfig | undefined {
+    const lights = this.config.getLights();
+    for (const light of lights) {
+      if (light.id === entityId || (this.isGroupConfig(light) && light.groupedLightId === entityId)) {
+        return light;
+      }
+    }
+    return undefined;
   }
 
   private isGroupConfig(entityConfig: LightConfig | GroupConfig): entityConfig is GroupConfig {
