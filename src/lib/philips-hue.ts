@@ -40,7 +40,7 @@ class PhilipsHue {
   private readonly setup: PhilipsHueSetup;
   private hueApi: HueApi;
   private eventStream: HueEventStream;
-  private groupedLightIdToGroupId: Record<string, string> = {};
+  private groupedLightIdToGroupId: Map<string, string> = new Map();
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -75,11 +75,11 @@ class PhilipsHue {
   }
 
   private updateGroupedLightMapping() {
-    this.groupedLightIdToGroupId = {};
+    this.groupedLightIdToGroupId.clear();
     const lights = this.config.getLights();
     for (const light of lights) {
       if (this.isGroupConfig(light)) {
-        this.groupedLightIdToGroupId[light.groupedLightId] = light.id;
+        this.groupedLightIdToGroupId.set(light.groupedLightId, light.id);
       }
     }
   }
@@ -240,7 +240,7 @@ class PhilipsHue {
       if (["light", "grouped_light"].includes(data.type)) {
         let entityId: string;
         if (data.type === "grouped_light") {
-          const mappedId = this.groupedLightIdToGroupId[data.id];
+          const mappedId = this.groupedLightIdToGroupId.get(data.id);
           if (!mappedId) {
             log.debug("Skipping grouped_light event with unmapped id '%s'; no matching configured entity.", data.id);
             continue;
