@@ -173,7 +173,7 @@ class PhilipsHue {
     entityConfig: LightConfig | GroupConfig,
     command: string,
     params?: { [key: string]: string | number | boolean }
-  ) {
+  ): Promise<StatusCodes> {
     const isGroup = this.isGroupConfig(entityConfig);
     const singleLight = !isGroup;
     const entityId = singleLight ? entity.id : entityConfig.groupedLightId;
