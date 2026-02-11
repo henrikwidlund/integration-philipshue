@@ -223,7 +223,17 @@ class PhilipsHue {
   private handleEventStreamUpdate(event: HueEvent) {
     for (const data of event.data) {
       if (["light", "grouped_light"].includes(data.type)) {
-        const entityId = data.type === "grouped_light" ? this.groupedLightIdToGroupId[data.id] || data.id : data.id;
+        let entityId: string;
+        if (data.type === "grouped_light") {
+          const mappedId = this.groupedLightIdToGroupId[data.id];
+          if (!mappedId) {
+            log.debug("Skipping grouped_light event with unmapped id '%s'; no matching configured entity.", data.id);
+            continue;
+          }
+          entityId = mappedId;
+        } else {
+          entityId = data.id;
+        }
         log.debug("event stream light update: %s", JSON.stringify(data));
         this.syncLightState(entityId, data).catch((error) =>
           log.error("Syncing lights failed for event stream update:", error)
