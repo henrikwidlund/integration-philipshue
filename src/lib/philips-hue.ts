@@ -175,8 +175,7 @@ class PhilipsHue {
     params?: { [key: string]: string | number | boolean }
   ): Promise<StatusCodes> {
     const isGroup = this.isGroupConfig(entityConfig);
-    const singleLight = !isGroup;
-    const entityId = singleLight ? entity.id : entityConfig.groupedLightId;
+    const entityId = isGroup ? entityConfig.groupedLightId : entity.id;
     if (!entityId) {
       log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
       return StatusCodes.ServerError;
@@ -186,7 +185,7 @@ class PhilipsHue {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, singleLight);
+          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, !isGroup);
           break;
         }
         case LightCommands.On: {
@@ -206,11 +205,11 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
           }
-          await this.hueApi.lightResource.updateLightState(entityId, req, singleLight);
+          await this.hueApi.lightResource.updateLightState(entityId, req, !isGroup);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entityId, false, singleLight);
+          await this.hueApi.lightResource.setOn(entityId, false, !isGroup);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
