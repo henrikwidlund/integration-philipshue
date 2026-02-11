@@ -16,7 +16,7 @@ import {
   LightStates,
   StatusCodes
 } from "@unfoldedcircle/integration-api";
-import Config, { ConfigEvent, GroupConfig, LightConfig } from "../config.js";
+import Config, { ConfigEvent, GroupConfig, LightOrGroupConfig } from "../config.js";
 import log from "../log.js";
 import {
   brightnessToPercent,
@@ -154,7 +154,7 @@ class PhilipsHue {
     this.uc.addAvailableEntity(light);
   }
 
-  private getEntityConfigById(entityId: string): LightConfig | GroupConfig | undefined {
+  private getEntityConfigById(entityId: string): LightOrGroupConfig | undefined {
     const lights = this.config.getLights();
     for (const light of lights) {
       if (light.id === entityId || (this.isGroupConfig(light) && light.groupedLightId === entityId)) {
@@ -164,13 +164,13 @@ class PhilipsHue {
     return undefined;
   }
 
-  private isGroupConfig(entityConfig: LightConfig | GroupConfig): entityConfig is GroupConfig {
+  private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
     return "groupType" in entityConfig;
   }
 
   private async handleLightCmd(
     entity: Entity,
-    entityConfig: LightConfig | GroupConfig,
+    entityConfig: LightOrGroupConfig,
     command: string,
     params?: { [key: string]: string | number | boolean }
   ): Promise<StatusCodes> {

@@ -26,7 +26,7 @@ export type LightOrGroupConfig = LightConfig | GroupConfig;
 
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
-  lights: { [key: string]: LightConfig | GroupConfig };
+  lights: { [key: string]: LightOrGroupConfig };
 }
 
 export type ConfigEvent =
