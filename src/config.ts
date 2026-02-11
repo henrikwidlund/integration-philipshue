@@ -79,11 +79,11 @@ class Config extends EventEmitter {
     }
   }
 
-  public getLights() {
+  public getLights(): (LightOrGroupConfig & { id: string })[] {
     return Object.entries(this.config.lights).map(([id, light]) => ({ id, ...light }));
   }
 
-  public updateLight(id: string, light: LightConfig) {
+  public updateLight(id: string, light: LightOrGroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
   }
