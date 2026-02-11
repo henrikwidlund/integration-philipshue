@@ -41,6 +41,7 @@ class PhilipsHue {
   private hueApi: HueApi;
   private eventStream: HueEventStream;
   private groupedLightIdToGroupId: Map<string, string> = new Map();
+  private entityIdToConfig: Map<string, LightOrGroupConfig> = new Map();
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -60,7 +61,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubConfig.username);
     }
     this.readEntitiesFromConfig();
-    this.updateGroupedLightMapping();
+    this.updateEntityIndexes();
     this.setupDriverEvents();
     this.setupEventStreamEvents();
     log.info("Philips Hue driver initialized");
@@ -74,11 +75,14 @@ class PhilipsHue {
     }
   }
 
-  private updateGroupedLightMapping() {
+  private updateEntityIndexes() {
     this.groupedLightIdToGroupId.clear();
+    this.entityIdToConfig.clear();
     const lights = this.config.getLights();
     for (const light of lights) {
+      this.entityIdToConfig.set(light.id, light);
       if (this.isGroupConfig(light)) {
+        this.entityIdToConfig.set(light.groupedLightId, light);
         this.groupedLightIdToGroupId.set(light.groupedLightId, light.id);
       }
     }
@@ -121,7 +125,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubCfg.username);
       this.eventStream.connect(getHubUrl(hubCfg.ip), hubCfg.username);
     }
-    this.updateGroupedLightMapping();
+    this.updateEntityIndexes();
   }
 
   private async onCfgRemove(_bridgeId?: string) {
@@ -139,7 +143,7 @@ class PhilipsHue {
       const light = new Light(event.data.id, event.data.name, { features: event.data.features });
       this.addAvailableLight(light);
     }
-    this.updateGroupedLightMapping();
+    this.updateEntityIndexes();
   }
 
   private addAvailableLight(light: Light) {
@@ -155,13 +159,7 @@ class PhilipsHue {
   }
 
   private getEntityConfigById(entityId: string): LightOrGroupConfig | undefined {
-    const lights = this.config.getLights();
-    for (const light of lights) {
-      if (light.id === entityId || (this.isGroupConfig(light) && light.groupedLightId === entityId)) {
-        return light;
-      }
-    }
-    return undefined;
+    return this.entityIdToConfig.get(entityId);
   }
 
   private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
