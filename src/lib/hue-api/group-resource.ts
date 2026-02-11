@@ -33,7 +33,7 @@ class GroupResource {
     const endpoint = groupType === "zone" ? `/clip/v2/resource/zone/${id}` : `/clip/v2/resource/room/${id}`;
     const res = await this.api.sendRequest<GroupResourceResponse>("GET", endpoint);
     if (!res.data || res.data.length === 0) {
-      throw new HueError("Group not found", StatusCodes.NotFound);
+      throw new HueError(`Group not found (type=${groupType}, id=${id}, endpoint=${endpoint})`, StatusCodes.NotFound);
     }
     return res.data[0];
   }
