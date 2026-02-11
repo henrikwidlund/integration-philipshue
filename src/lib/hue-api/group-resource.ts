@@ -79,7 +79,7 @@ class GroupResource {
 
   private async getGroupedLights(): Promise<LightResource[]> {
     const res = await this.api.sendRequest<LightResourceResult>("GET", "/clip/v2/resource/grouped_light");
-    return res.data;
+    return res.data ?? [];
   }
 }
 
