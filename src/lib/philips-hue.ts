@@ -78,7 +78,7 @@ class PhilipsHue {
     this.groupedLightIdToGroupId = {};
     const lights = this.config.getLights();
     for (const light of lights) {
-      if (this.isGroupConfig(light) && light.groupType) {
+      if (this.isGroupConfig(light)) {
         this.groupedLightIdToGroupId[light.groupedLightId] = light.id;
       }
     }
