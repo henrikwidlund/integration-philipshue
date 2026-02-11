@@ -284,10 +284,18 @@ class PhilipsHueSetup {
         });
         const lightData = await this.hueApi.lightResource.getLights();
         this.addAvailableLights(lightData);
-        const zoneData = await this.hueApi.groupResource.getGroupsWithLights("zone");
-        this.addAvailableGroups(zoneData, "zone");
-        const roomData = await this.hueApi.groupResource.getGroupsWithLights("room");
-        this.addAvailableGroups(roomData, "room");
+        const groupDataMap = await this.hueApi.groupResource.getGroupsWithLights();
+
+        const zoneData = groupDataMap.get("zone");
+        if (zoneData) {
+          this.addAvailableGroups(zoneData, "zone");
+        }
+
+        const roomData = groupDataMap.get("room");
+        if (roomData) {
+          this.addAvailableGroups(roomData, "room");
+        }
+
         return new SetupComplete();
       } catch (error) {
         log.error("Failed to get hub config", error);
