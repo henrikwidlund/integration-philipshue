@@ -45,6 +45,11 @@ export interface LightResourceResult {
   data: LightResource[];
 }
 
+export interface GroupLightResult {
+  errors: { description: string }[];
+  data: GroupedLightResource[];
+}
+
 export interface LightResource {
   id: string;
   id_v1?: string;
@@ -139,6 +144,56 @@ export interface LightResource {
   type: string;
 }
 
+export interface GroupedLightResource {
+  id: string;
+  id_v1?: string;
+  owner: {
+    rid: string;
+    rtype: string;
+  };
+  on: {
+    on: boolean;
+  };
+  dimming: {
+    brightness: number;
+    min_dim_level?: number;
+  };
+  dimming_delta: unknown;
+  color_temperature?: {
+    mirek: number;
+    mirek_valid: boolean;
+    mirek_schema: {
+      mirek_minimum: number;
+      mirek_maximum: number;
+    };
+  };
+  color_temperature_delta: unknown;
+  color?: {
+    xy: {
+      x: number;
+      y: number;
+    };
+    gamut: {
+      red: { x: number; y: number };
+      green: { x: number; y: number };
+      blue: { x: number; y: number };
+    };
+    gamut_type: string;
+  };
+  alert: {
+    action_values: string[];
+  };
+  signaling: {
+    signal_values: string[];
+  };
+  dynamics: {
+    status: string;
+    status_values: string[];
+    speed: number;
+    speed_valid: boolean;
+  };
+}
+
 export interface LightResourceParams {
   on: { on: boolean };
   dimming: {
@@ -217,14 +272,6 @@ export interface GroupResource {
     name: string;
     archetype: Archetype;
   };
-}
-
-export interface GroupResourceWithGroupLight {
-  id: string;
-  metadata: {
-    name: string;
-  };
-  groupLight: LightResource;
 }
 
 export interface ResourceIdentifier {
@@ -327,4 +374,14 @@ export type KnownArchetype =
 export interface GroupResourceResponse {
   errors: { description: string }[];
   data: GroupResource[];
+}
+
+export interface CombinedGroupResource {
+  id: string;
+  id_v1?: string;
+  grouped_lights: GroupedLightResource[];
+  type: ResourceType;
+  metadata: {
+    name: string;
+  };
 }

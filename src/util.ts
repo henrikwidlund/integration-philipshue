@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { GroupResourceWithGroupLight, LightResource } from "./lib/hue-api/types.js";
+import { CombinedGroupResource, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 
@@ -26,7 +26,7 @@ export function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function getLightFeatures(light: LightResource) {
+export function getLightFeatures(light: LightResource): LightFeatures[] {
   const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
   if (light.dimming) {
     features.push(LightFeatures.Dim);
@@ -40,8 +40,18 @@ export function getLightFeatures(light: LightResource) {
   return features;
 }
 
-export function getGroupFeatures(group: GroupResourceWithGroupLight) {
-  return getLightFeatures(group.groupLight);
+export function getGroupFeatures(group: CombinedGroupResource): LightFeatures[] {
+  const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
+  if (group.grouped_lights.some((groupLight) => groupLight.dimming)) {
+    features.push(LightFeatures.Dim);
+  }
+  if (group.grouped_lights.some((groupLight) => groupLight.color_temperature?.mirek_schema)) {
+    features.push(LightFeatures.ColorTemperature);
+  }
+  if (group.grouped_lights.some((groupLight) => groupLight.color?.xy)) {
+    features.push(LightFeatures.Color);
+  }
+  return features;
 }
 
 export function convertXYtoHSV(x: number, y: number, lightness = 1) {

@@ -24,6 +24,7 @@ import {
   convertHSVtoXY,
   convertXYtoHSV,
   delay,
+  getGroupFeatures,
   getHubUrl,
   getLightFeatures,
   mirekToColorTemp,
@@ -31,7 +32,7 @@ import {
 } from "../util.js";
 import HueApi, { HueError } from "./hue-api/api.js";
 import HueEventStream from "./hue-api/event-stream.js";
-import { HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
+import { CombinedGroupResource, HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
 import PhilipsHueSetup from "./setup.js";
 
 class PhilipsHue {
@@ -78,12 +79,14 @@ class PhilipsHue {
   private updateEntityIndexes() {
     this.groupedLightIdToGroupId.clear();
     this.entityIdToConfig.clear();
-    const lights = this.config.getLights();
-    for (const light of lights) {
-      this.entityIdToConfig.set(light.id, light);
-      if (this.isGroupConfig(light)) {
-        this.entityIdToConfig.set(light.groupedLightId, light);
-        this.groupedLightIdToGroupId.set(light.groupedLightId, light.id);
+    const entities = this.config.getLights();
+    for (const entity of entities) {
+      this.entityIdToConfig.set(entity.id, entity);
+      if (this.isGroupConfig(entity)) {
+        entity.groupedLightIds.forEach((groupedLightId) => {
+          this.entityIdToConfig.set(groupedLightId, entity);
+          this.groupedLightIdToGroupId.set(groupedLightId, entity.id);
+        });
       }
     }
   }
@@ -173,12 +176,36 @@ class PhilipsHue {
     params?: { [key: string]: string | number | boolean }
   ): Promise<StatusCodes> {
     const isGroup = this.isGroupConfig(entityConfig);
-    const entityId = isGroup ? entityConfig.groupedLightId : entity.id;
-    if (!entityId) {
+    const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
+    if (!entityIds) {
       log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
       return StatusCodes.ServerError;
     }
 
+    const results = new Set(
+      await Promise.all(
+        entityIds.map(async (entityId) => {
+          return await this.handleSingleLightCmd(entity, entityId, command, isGroup, params);
+        })
+      )
+    );
+
+    if (results.has(StatusCodes.ServerError)) {
+      return StatusCodes.ServerError;
+    }
+    if (results.has(StatusCodes.BadRequest)) {
+      return StatusCodes.BadRequest;
+    }
+    return StatusCodes.Ok;
+  }
+
+  private async handleSingleLightCmd(
+    entity: Entity,
+    entityId: string,
+    command: string,
+    isGroup: boolean,
+    params?: { [key: string]: string | number | boolean }
+  ): Promise<StatusCodes> {
     try {
       switch (command) {
         case LightCommands.Toggle: {
@@ -306,11 +333,24 @@ class PhilipsHue {
 
   private async updateLight(entityId: string): Promise<boolean> {
     try {
-      const light = await this.hueApi.lightResource.getLight(entityId);
-
-      const lightFeatures = getLightFeatures(light);
-      this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
-      await this.syncLightState(entityId, light);
+      const config = this.entityIdToConfig.get(entityId)!;
+      const isGroup = this.isGroupConfig(config);
+      if (isGroup) {
+        const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);
+        const groupFeatures = getGroupFeatures(groupResource);
+        this.config.updateLight(entityId, {
+          name: groupResource.metadata.name,
+          features: groupFeatures,
+          groupedLightIds: config.groupedLightIds,
+          groupType: config.groupType
+        });
+        await this.syncGroupState(entityId, groupResource);
+      } else {
+        const light = await this.hueApi.lightResource.getLight(entityId);
+        const lightFeatures = getLightFeatures(light);
+        this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
+        await this.syncLightState(entityId, light);
+      }
 
       return true;
     } catch (error: unknown) {
@@ -367,6 +407,37 @@ class PhilipsHue {
       lightState[LightAttributes.Saturation] = sat;
     }
     this.uc.getConfiguredEntities().updateEntityAttributes(entityId, lightState);
+  }
+
+  private async syncGroupState(entityId: string, group: Partial<CombinedGroupResource>) {
+    const entity = this.uc.getConfiguredEntities().getEntity(entityId);
+    if (!entity) {
+      log.debug("entity is not configured, skipping sync", entityId);
+      return;
+    }
+    const groupState: Record<string, string | number> = {};
+    const onState = group.grouped_lights?.some((groupLight) => groupLight.on && groupLight.on) ?? false;
+    if (group.grouped_lights?.some((groupLight) => groupLight.on && groupLight.on)) {
+      groupState[LightAttributes.State] = onState ? LightStates.On : LightStates.Off;
+    }
+    // select the first non-null brightness and color values from the grouped lights, as there's no unified group state for these attributes available from the API
+    const dimming = group.grouped_lights?.find((groupLight) => groupLight.dimming);
+    if (dimming) {
+      groupState[LightAttributes.Brightness] = percentToBrightness(dimming.dimming.brightness);
+    }
+
+    const colorTemp = group.grouped_lights?.find((groupLight) => groupLight.color_temperature?.mirek_valid);
+    if (colorTemp?.color_temperature) {
+      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(colorTemp.color_temperature.mirek);
+    }
+
+    const color = group.grouped_lights?.find((groupLight) => groupLight.color?.xy);
+    if (color?.color && color.color.xy) {
+      const { hue, sat } = convertXYtoHSV(color.color.xy.x, color.color.xy.y, color.dimming?.brightness);
+      groupState[LightAttributes.Hue] = hue;
+      groupState[LightAttributes.Saturation] = sat;
+    }
+    this.uc.getConfiguredEntities().updateEntityAttributes(entityId, groupState);
   }
 
   private updateEntityStates(state: LightStates) {

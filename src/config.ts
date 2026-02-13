@@ -20,7 +20,7 @@ export interface LightConfig {
 }
 export interface GroupConfig extends LightConfig {
   groupType: GroupType;
-  groupedLightId: string;
+  groupedLightIds: string[];
 }
 export type LightOrGroupConfig = LightConfig | GroupConfig;
 

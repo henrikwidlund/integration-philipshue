@@ -21,7 +21,7 @@ import Config from "../config.js";
 import log from "../log.js";
 import { convertImageToBase64, delay, getHubUrl, getLightFeatures, getGroupFeatures, i18all } from "../util.js";
 import HueApi from "./hue-api/api.js";
-import { LightResource, GroupResourceWithGroupLight, GroupType } from "./hue-api/types.js";
+import { LightResource, GroupType, CombinedGroupResource } from "./hue-api/types.js";
 import os from "os";
 import * as uc from "@unfoldedcircle/integration-api";
 import net from "net";
@@ -284,16 +284,15 @@ class PhilipsHueSetup {
         });
         const lightData = await this.hueApi.lightResource.getLights();
         this.addAvailableLights(lightData);
-        const groupDataMap = await this.hueApi.groupResource.getGroupsWithLights();
+        const roomData = await this.hueApi.groupResource.getGroupResources("room");
 
-        const zoneData = groupDataMap.get("zone");
-        if (zoneData) {
-          this.addAvailableGroups(zoneData, "zone");
-        }
-
-        const roomData = groupDataMap.get("room");
         if (roomData) {
           this.addAvailableGroups(roomData, "room");
+        }
+
+        const zoneData = await this.hueApi.groupResource.getGroupResources("zone");
+        if (zoneData) {
+          this.addAvailableGroups(zoneData, "zone");
         }
 
         return new SetupComplete();
@@ -338,13 +337,13 @@ class PhilipsHueSetup {
     });
   }
 
-  private addAvailableGroups(groups: GroupResourceWithGroupLight[], groupType: GroupType) {
+  private addAvailableGroups(groups: CombinedGroupResource[], groupType: GroupType) {
     groups.forEach((group) => {
       const features = getGroupFeatures(group);
       this.config.addLight(group.id, {
         name: group.metadata.name,
         features,
-        groupedLightId: group.groupLight.id,
+        groupedLightIds: group.grouped_lights.map((gl) => gl.id),
         groupType
       });
     });
