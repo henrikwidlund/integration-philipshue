@@ -173,7 +173,7 @@ class PhilipsHue {
   ): Promise<StatusCodes> {
     const isGroup = this.isGroupConfig(entityConfig);
     const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
-    if (!entityIds) {
+    if (!entityIds || entityIds.length === 0) {
       log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
       return StatusCodes.ServerError;
     }
@@ -281,6 +281,7 @@ class PhilipsHue {
           entityId = data.id;
         }
         log.debug("event stream light update: %s", JSON.stringify(data));
+        // Stream updates for grouped lights have the same contract as single lights
         this.syncLightState(entityId, data).catch((error) =>
           log.error("Syncing lights failed for event stream update:", error)
         );
@@ -339,7 +340,11 @@ class PhilipsHue {
 
   private async updateLight(entityId: string): Promise<boolean> {
     try {
-      const config = this.entityIdToConfig.get(entityId)!;
+      const config = this.entityIdToConfig.get(entityId);
+      if (!config) {
+        log.warn("No config found for entity %s; skipping update", entityId);
+        return false;
+      }
       const isGroup = this.isGroupConfig(config);
       if (isGroup) {
         const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);

@@ -284,14 +284,14 @@ class PhilipsHueSetup {
         });
         const lightData = await this.hueApi.lightResource.getLights();
         this.addAvailableLights(lightData);
-        const roomData = await this.hueApi.groupResource.getGroupResources("room");
 
-        if (roomData) {
+        const roomData = await this.hueApi.groupResource.getGroupResources("room");
+        if (roomData.length > 0) {
           this.addAvailableGroups(roomData, "room");
         }
 
         const zoneData = await this.hueApi.groupResource.getGroupResources("zone");
-        if (zoneData) {
+        if (zoneData.length > 0) {
           this.addAvailableGroups(zoneData, "zone");
         }
 

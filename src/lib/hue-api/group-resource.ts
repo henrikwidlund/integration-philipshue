@@ -75,7 +75,7 @@ class GroupResource {
     return {
       id: group.id,
       id_v1: group.id_v1,
-      grouped_lights: groupedLights.filter((y) => y !== null) as GroupedLightResource[],
+      grouped_lights: groupedLights.filter((groupedLight) => groupedLight !== null) as GroupedLightResource[],
       type: group.type,
       metadata: {
         name: group.metadata.name
