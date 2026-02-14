@@ -353,7 +353,7 @@ class PhilipsHue {
           return false;
         }
         const groupFeatures = getGroupFeatures(groupResource);
-        const groupedLightIds = (groupResource.grouped_lights ?? []).map((gl) => gl.id);
+        const groupedLightIds = groupResource.grouped_lights.map((gl) => gl.id);
         this.config.updateLight(entityId, {
           name: groupResource.metadata.name,
           features: groupFeatures,
