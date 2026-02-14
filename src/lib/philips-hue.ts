@@ -297,6 +297,7 @@ class PhilipsHue {
       for (const id of ids) {
         await this.updateLight(id);
       }
+      this.updateEntityIndexes();
       // make sure the event stream is connected
       this.eventStream.connect(getHubUrl(hubConfig.ip), hubConfig.username);
     } else {
@@ -335,6 +336,7 @@ class PhilipsHue {
       const entityId = entity.entity_id as string;
       await this.updateLight(entityId);
     }
+    this.updateEntityIndexes();
     // TODO if an error occurred while updating lights: perform a manual connectivity test and set entity states
   }
 
@@ -360,13 +362,11 @@ class PhilipsHue {
           groupedLightIds: groupedLightIds,
           groupType: groupResource.type === "zone" ? "zone" : "room"
         });
-        this.updateEntityIndexes();
         await this.syncGroupState(entityId, groupResource);
       } else {
         const light = await this.hueApi.lightResource.getLight(entityId);
         const lightFeatures = getLightFeatures(light);
         this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
-        this.updateEntityIndexes();
         await this.syncLightState(entityId, light);
       }
 
