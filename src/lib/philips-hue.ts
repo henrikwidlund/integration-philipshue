@@ -356,11 +356,13 @@ class PhilipsHue {
           groupedLightIds: groupedLightIds,
           groupType: groupResource.type === "zone" ? "zone" : "room"
         });
+        this.updateEntityIndexes();
         await this.syncGroupState(entityId, groupResource);
       } else {
         const light = await this.hueApi.lightResource.getLight(entityId);
         const lightFeatures = getLightFeatures(light);
         this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
+        this.updateEntityIndexes();
         await this.syncLightState(entityId, light);
       }
 
