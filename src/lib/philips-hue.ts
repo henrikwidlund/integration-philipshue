@@ -436,7 +436,7 @@ class PhilipsHue {
     const groupState: Record<string, string | number> = {};
     const onState = group.grouped_lights?.find((groupLight) => groupLight.on);
     if (onState) {
-      groupState[LightAttributes.State] = onState?.on.on ? LightStates.On : LightStates.Off;
+      groupState[LightAttributes.State] = onState.on.on ? LightStates.On : LightStates.Off;
     }
 
     const dimming = group.grouped_lights?.find((groupLight) => groupLight.dimming);
