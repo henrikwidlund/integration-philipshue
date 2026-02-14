@@ -214,6 +214,16 @@ class PhilipsHue {
           break;
         }
         case LightCommands.On: {
+          if (
+            params?.brightness === undefined &&
+            params?.color_temperature === undefined &&
+            params?.hue === undefined
+          ) {
+            // if no parameters are provided, simply turn on the light
+            await this.hueApi.lightResource.setOn(entityId, true, !isGroup);
+            break;
+          }
+
           const req: Partial<LightResourceParams> = {};
           // ("brightness" (0-255), "color_temperature" (0-100), "hue", "saturation".)
           if (params?.brightness !== undefined) {
@@ -416,11 +426,11 @@ class PhilipsHue {
       return;
     }
     const groupState: Record<string, string | number> = {};
-    const onState = group.grouped_lights?.some((groupLight) => groupLight.on && groupLight.on) ?? false;
-    if (group.grouped_lights?.some((groupLight) => groupLight.on && groupLight.on)) {
-      groupState[LightAttributes.State] = onState ? LightStates.On : LightStates.Off;
+    const onState = group.grouped_lights?.find((groupLight) => groupLight.on);
+    if (onState) {
+      groupState[LightAttributes.State] = onState?.on.on ? LightStates.On : LightStates.Off;
     }
-    // select the first non-null brightness and color values from the grouped lights, as there's no unified group state for these attributes available from the API
+
     const dimming = group.grouped_lights?.find((groupLight) => groupLight.dimming);
     if (dimming) {
       groupState[LightAttributes.Brightness] = percentToBrightness(dimming.dimming.brightness);
