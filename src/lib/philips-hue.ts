@@ -151,7 +151,7 @@ class PhilipsHue {
 
   private addAvailableLight(light: Light) {
     light.setCmdHandler((entity, command, params) => {
-      const latestConfig = this.getEntityConfigById(entity.id);
+      const latestConfig = this.entityIdToConfig.get(entity.id);
       if (!latestConfig) {
         log.error("No config found for entity: %s", entity.id);
         return Promise.resolve(StatusCodes.ServerError);
@@ -159,10 +159,6 @@ class PhilipsHue {
       return this.handleLightCmd(entity, latestConfig, command, params);
     });
     this.uc.addAvailableEntity(light);
-  }
-
-  private getEntityConfigById(entityId: string): LightOrGroupConfig | undefined {
-    return this.entityIdToConfig.get(entityId);
   }
 
   private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
