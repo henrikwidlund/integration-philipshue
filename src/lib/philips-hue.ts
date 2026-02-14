@@ -348,6 +348,10 @@ class PhilipsHue {
       const isGroup = this.isGroupConfig(config);
       if (isGroup) {
         const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);
+        if (!["room", "zone"].includes(groupResource.type)) {
+          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, entityId);
+          return false;
+        }
         const groupFeatures = getGroupFeatures(groupResource);
         const groupedLightIds = (groupResource.grouped_lights ?? []).map((gl) => gl.id);
         this.config.updateLight(entityId, {
