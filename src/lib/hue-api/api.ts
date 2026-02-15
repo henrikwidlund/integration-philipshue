@@ -5,8 +5,9 @@
  * @license Mozilla Public License Version 2.0, see LICENSE for more details.
  */
 
-import axios, { AxiosInstance } from "axios";
+import axios from "axios";
 import rateLimit from "axios-rate-limit";
+import type { RateLimitedAxiosInstance } from "axios-rate-limit";
 import https from "node:https";
 import { StatusCodes } from "@unfoldedcircle/integration-api";
 import log from "../../log.js";
@@ -49,7 +50,7 @@ class HueApi implements ResourceApi {
   private hubUrl?: string;
   public readonly lightResource: LightResource;
   public readonly groupResource: GroupResource;
-  private axiosInstance: AxiosInstance;
+  private axiosInstance: RateLimitedAxiosInstance;
 
   constructor(hubUrl?: string, requestTimeout: number = 1500) {
     this.hubUrl = hubUrl;
