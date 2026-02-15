@@ -42,13 +42,22 @@ export function getLightFeatures(light: LightResource): LightFeatures[] {
 
 export function getGroupFeatures(group: CombinedGroupResource): LightFeatures[] {
   const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
-  if (group.grouped_lights.some((groupLight) => groupLight.dimming)) {
+  if (
+    group.grouped_lights.some((groupLight) => groupLight.dimming) ||
+    group.lights.some((childLight) => childLight.dimming)
+  ) {
     features.push(LightFeatures.Dim);
   }
-  if (group.grouped_lights.some((groupLight) => groupLight.color_temperature?.mirek_schema)) {
+  if (
+    group.grouped_lights.some((groupLight) => groupLight.color_temperature?.mirek_schema) ||
+    group.lights.some((childLight) => childLight.color_temperature?.mirek_schema)
+  ) {
     features.push(LightFeatures.ColorTemperature);
   }
-  if (group.grouped_lights.some((groupLight) => groupLight.color?.xy)) {
+  if (
+    group.grouped_lights.some((groupLight) => groupLight.color?.xy) ||
+    group.lights.some((childLight) => childLight.color?.xy)
+  ) {
     features.push(LightFeatures.Color);
   }
   return features;

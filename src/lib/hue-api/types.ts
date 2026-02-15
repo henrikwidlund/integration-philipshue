@@ -379,6 +379,7 @@ export interface GroupResourceResponse {
 export interface CombinedGroupResource {
   id: string;
   id_v1?: string;
+  lights: LightResource[];
   grouped_lights: GroupedLightResource[];
   type: ResourceType;
   metadata: {

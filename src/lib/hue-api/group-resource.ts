@@ -13,14 +13,18 @@ import {
   GroupLightResult,
   GroupResourceResponse,
   GroupType,
-  GroupedLightResource
+  GroupedLightResource,
+  LightResource as LightResourceData
 } from "./types.js";
+import LightResource from "./light-resource.js";
 
 class GroupResource {
   private readonly api: ResourceApi;
+  private readonly lightResource: LightResource;
 
-  constructor(api: ResourceApi) {
+  constructor(api: ResourceApi, lightResource: LightResource) {
     this.api = api;
+    this.lightResource = lightResource;
   }
 
   public async getGroupResources(groupType: GroupType): Promise<CombinedGroupResource[]> {
@@ -31,31 +35,77 @@ class GroupResource {
     }
 
     const groupedLights = await this.getGroupedLights();
-    const groupedLightById = new Map(groupedLights.map((light) => [light.id, light]));
-
+    const groupedLightById = new Map(groupedLights.map((groupedLight) => [groupedLight.id, groupedLight]));
     const hasGroupedLightService = (group: GroupResourceData): boolean =>
       group.services.some((service) => service.rtype === "grouped_light");
 
-    return res.data.filter(hasGroupedLightService).map((group) => {
-      const services = group.services.filter((service) => service.rtype === "grouped_light");
-      const mappedGroupedLights = services.map((service) => {
-        const groupedLight = groupedLightById.get(service.rid);
-        if (!groupedLight) {
-          throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
-        }
-        return groupedLight;
-      });
+    const lights = await this.lightResource.getLights();
+    const lightById = new Map(lights.map((light) => [light.id, light]));
+    const lightFilterType = groupType === "zone" ? "light" : "device";
+    const hasChildLight = (group: GroupResourceData): boolean =>
+      group.children.some((child) => child.rtype === lightFilterType);
 
-      return {
-        id: group.id,
-        id_v1: group.id_v1,
-        grouped_lights: mappedGroupedLights,
-        type: group.type,
-        metadata: {
-          name: group.metadata.name
-        }
-      };
-    });
+    const devices = await this.getDevices(groupType);
+
+    return res.data
+      .filter((entry) => hasGroupedLightService(entry) && hasChildLight(entry))
+      .map((group) => {
+        const services = group.services.filter((service) => service.rtype === "grouped_light");
+        const mappedGroupedLights = services.map((service) => {
+          const groupedLight = groupedLightById.get(service.rid);
+          if (!groupedLight) {
+            throw new HueError(`Grouped light resource not found for group ${group.id}`, StatusCodes.ServerError);
+          }
+          return groupedLight;
+        });
+
+        const mappedChildLights =
+          groupType == "zone"
+            ? group.children
+                .map((child) => lightById.get(child.rid))
+                .filter((light): light is LightResourceData => light !== undefined)
+            : Array.from(
+                new Set(
+                  group.children
+                    .map((child) => {
+                      return (
+                        devices
+                          .get(child.rid)
+                          ?.map((lightId) => lightById.get(lightId))
+                          .filter((light): light is LightResourceData => light !== undefined) ?? []
+                      );
+                    })
+                    .flat()
+                )
+              );
+
+        return {
+          id: group.id,
+          id_v1: group.id_v1,
+          lights: mappedChildLights,
+          grouped_lights: mappedGroupedLights,
+          type: group.type,
+          metadata: {
+            name: group.metadata.name
+          }
+        };
+      });
+  }
+
+  private async getDevices(groupType: GroupType): Promise<Map<string, string[]>> {
+    if (groupType !== "room") {
+      return new Map<string, string[]>();
+    }
+    const res = await this.api.sendRequest<GroupResourceResponse>("GET", "/clip/v2/resource/device");
+    if (res.data) {
+      return new Map(
+        res.data.map((device) => [
+          device.id,
+          device.services.filter((service) => service.rtype === "light").map((service) => service.rid)
+        ])
+      );
+    }
+    return new Map<string, string[]>();
   }
 
   public async getGroupResource(entityId: string, groupType: GroupType): Promise<CombinedGroupResource> {
@@ -66,16 +116,47 @@ class GroupResource {
     }
 
     const group = res.data[0];
-    const groupedLights = await Promise.all(
+    const groups = await Promise.all(
       group.services
         .filter((service) => service.rtype === "grouped_light")
         .map(async (service) => await this.getGroupedLight(service.rid))
     );
 
+    const lights = await this.lightResource.getLights();
+    const lightById = new Map(lights.map((light) => [light.id, light]));
+
+    let mappedChildLights: LightResourceData[];
+    if (groupType === "zone") {
+      mappedChildLights = group.children
+        .filter((child) => child.rtype === "light")
+        .map((child) => lightById.get(child.rid))
+        .filter((light): light is LightResourceData => light !== undefined);
+    } else {
+      const devices = await this.getDevices(groupType);
+      mappedChildLights = Array.from(
+        new Set(
+          group.children
+            .filter((child) => child.rtype === "device")
+            .map((child) => {
+              return (
+                devices
+                  .get(child.rid)
+                  ?.map((lightId) => lightById.get(lightId))
+                  .filter((light): light is LightResourceData => light !== undefined) ?? []
+              );
+            })
+            .flat()
+        )
+      );
+    }
+
     return {
       id: group.id,
       id_v1: group.id_v1,
-      grouped_lights: groupedLights.filter((groupedLight) => groupedLight !== null) as GroupedLightResource[],
+      lights: mappedChildLights,
+      grouped_lights: groups.filter(
+        (groupedLight) => (groupedLight as GroupedLightResource) !== null
+      ) as GroupedLightResource[],
       type: group.type,
       metadata: {
         name: group.metadata.name

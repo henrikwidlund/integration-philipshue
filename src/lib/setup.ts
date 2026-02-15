@@ -344,6 +344,7 @@ class PhilipsHueSetup {
         name: group.metadata.name,
         features,
         groupedLightIds: group.grouped_lights.map((gl) => gl.id),
+        childLightIds: group.lights.map((light) => light.id),
         groupType
       });
     });

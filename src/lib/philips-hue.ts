@@ -355,12 +355,12 @@ class PhilipsHue {
           return false;
         }
         const groupFeatures = getGroupFeatures(groupResource);
-        const groupedLightIds = groupResource.grouped_lights.map((gl) => gl.id);
         this.config.updateLight(entityId, {
           name: groupResource.metadata.name,
           features: groupFeatures,
-          groupedLightIds: groupedLightIds,
-          groupType: groupResource.type === "zone" ? "zone" : "room"
+          groupedLightIds: groupResource.grouped_lights.map((gl) => gl.id),
+          groupType: groupResource.type === "zone" ? "zone" : "room",
+          childLightIds: groupResource.lights.map((light) => light.id)
         });
         await this.syncGroupState(entityId, groupResource);
       } else {
@@ -444,12 +444,16 @@ class PhilipsHue {
       groupState[LightAttributes.Brightness] = percentToBrightness(dimming.dimming.brightness);
     }
 
-    const colorTemp = group.grouped_lights?.find((groupLight) => groupLight.color_temperature?.mirek_valid);
+    const colorTemp =
+      group.grouped_lights?.find((groupLight) => groupLight.color_temperature?.mirek_valid) ??
+      group.lights?.find((light) => light.color_temperature?.mirek_valid);
     if (colorTemp?.color_temperature) {
       groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(colorTemp.color_temperature.mirek);
     }
 
-    const color = group.grouped_lights?.find((groupLight) => groupLight.color?.xy);
+    const color =
+      group.grouped_lights?.find((groupLight) => groupLight.color?.xy) ??
+      group.lights?.find((light) => light.color?.xy);
     if (color?.color && color.color.xy) {
       const { hue, sat } = convertXYtoHSV(color.color.xy.x, color.color.xy.y, color.dimming?.brightness);
       groupState[LightAttributes.Hue] = hue;
