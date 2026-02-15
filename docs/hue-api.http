@@ -58,6 +58,11 @@ hue-application-key: {{hue_api_key}}
 GET {{hue_bridge_url}}/clip/v2/resource/light HTTP/1.1
 hue-application-key: {{hue_api_key}}
 
+### get devices
+### Devices are used as children to rooms
+GET {{hue_bridge_url}}/clip/v2/resource/device HTTP/1.1
+hue-application-key: {{hue_api_key}}
+
 > {%
     // Extract the first light ID for the next requests
     // To use it in the future, manually save it in `hue_light_id` of your ###.env.json file

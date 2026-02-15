@@ -10,21 +10,31 @@ import EventEmitter from "node:events";
 import fs from "fs";
 import path from "path";
 import log from "./log.js";
+import { GamutType, GroupType } from "./lib/hue-api/types.js";
 
 const CFG_FILENAME = "philips_hue_config.json";
 
 export interface LightConfig {
   name: string;
   features: LightFeatures[];
+  gamut_type?: GamutType;
+  mirek_schema?: { mirek_minimum: number; mirek_maximum: number };
 }
+export interface GroupConfig extends LightConfig {
+  groupType: GroupType;
+  groupedLightIds: string[];
+  childLightIds: string[];
+}
+export type LightOrGroupConfig = LightConfig | GroupConfig;
+
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
-  lights: { [key: string]: LightConfig };
+  lights: { [key: string]: LightOrGroupConfig };
 }
 
 export type ConfigEvent =
-  | { type: "light-added"; data: LightConfig & { id: string } }
-  | { type: "light-updated"; data: LightConfig & { id: string } };
+  | { type: "light-added"; data: LightOrGroupConfig & { id: string } }
+  | { type: "light-updated"; data: LightOrGroupConfig & { id: string } };
 
 class Config extends EventEmitter {
   private config: PhilipsHueConfig = { lights: {} };
@@ -64,7 +74,7 @@ class Config extends EventEmitter {
     }
   }
 
-  public addLight(id: string, light: LightConfig) {
+  public addLight(id: string, light: LightOrGroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
     if (this.cb) {
@@ -72,16 +82,16 @@ class Config extends EventEmitter {
     }
   }
 
-  public getLights() {
+  public getLights(): (LightOrGroupConfig & { id: string })[] {
     return Object.entries(this.config.lights).map(([id, light]) => ({ id, ...light }));
   }
 
-  public updateLight(id: string, light: LightConfig) {
+  public updateLight(id: string, light: LightOrGroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
   }
 
-  public getLight(id: string): LightConfig | undefined {
+  public getLight(id: string): LightOrGroupConfig | undefined {
     return this.config.lights[id];
   }
 

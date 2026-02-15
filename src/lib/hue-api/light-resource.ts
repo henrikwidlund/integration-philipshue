@@ -35,15 +35,17 @@ class LightResource {
     return res.data[0];
   }
 
-  async setOn(id: string, on: boolean): Promise<LightResourceResponse["data"]> {
-    const res = await this.api.sendRequest<LightResourceResponse>("PUT", `/clip/v2/resource/light/${id}`, {
+  async setOn(id: string, on: boolean, singleLight: boolean): Promise<LightResourceResponse["data"]> {
+    const endpoint = singleLight ? `/clip/v2/resource/light/${id}` : `/clip/v2/resource/grouped_light/${id}`;
+    const res = await this.api.sendRequest<LightResourceResponse>("PUT", endpoint, {
       on: { on }
     });
     return res.data;
   }
 
-  async setBrightness(id: string, brightness: number): Promise<LightResourceResponse["data"]> {
-    const res = await this.api.sendRequest<LightResourceResponse>("PUT", `/clip/v2/resource/light/${id}`, {
+  async setBrightness(id: string, brightness: number, singleLight: boolean): Promise<LightResourceResponse["data"]> {
+    const endpoint = singleLight ? `/clip/v2/resource/light/${id}` : `/clip/v2/resource/grouped_light/${id}`;
+    const res = await this.api.sendRequest<LightResourceResponse>("PUT", endpoint, {
       dimming: {
         brightness: Math.max(1, Math.min(100, brightness))
       }
@@ -51,8 +53,9 @@ class LightResource {
     return res.data;
   }
 
-  async setColorTemperature(id: string, mirek: number): Promise<LightResourceResponse["data"]> {
-    const res = await this.api.sendRequest<LightResourceResponse>("PUT", `/clip/v2/resource/light/${id}`, {
+  async setColorTemperature(id: string, mirek: number, singleLight: boolean): Promise<LightResourceResponse["data"]> {
+    const endpoint = singleLight ? `/clip/v2/resource/light/${id}` : `/clip/v2/resource/grouped_light/${id}`;
+    const res = await this.api.sendRequest<LightResourceResponse>("PUT", endpoint, {
       color_temperature: {
         mirek: Math.max(153, Math.min(500, mirek))
       }
@@ -60,8 +63,9 @@ class LightResource {
     return res.data;
   }
 
-  async setColor(id: string, x: number, y: number): Promise<LightResourceResponse["data"]> {
-    const res = await this.api.sendRequest<LightResourceResponse>("PUT", `/clip/v2/resource/light/${id}`, {
+  async setColor(id: string, x: number, y: number, singleLight: boolean): Promise<LightResourceResponse["data"]> {
+    const endpoint = singleLight ? `/clip/v2/resource/light/${id}` : `/clip/v2/resource/grouped_light/${id}`;
+    const res = await this.api.sendRequest<LightResourceResponse>("PUT", endpoint, {
       color: {
         xy: {
           x: Math.max(0, Math.min(1, x)),
@@ -83,8 +87,13 @@ class LightResource {
     return res.data;
   }
 
-  async updateLightState(id: string, params: Partial<LightResourceParams>): Promise<LightResourceResponse["data"]> {
-    const res = await this.api.sendRequest<LightResourceResponse>("PUT", `/clip/v2/resource/light/${id}`, params);
+  async updateLightState(
+    id: string,
+    params: Partial<LightResourceParams>,
+    singleLight: boolean
+  ): Promise<LightResourceResponse["data"]> {
+    const endpoint = singleLight ? `/clip/v2/resource/light/${id}` : `/clip/v2/resource/grouped_light/${id}`;
+    const res = await this.api.sendRequest<LightResourceResponse>("PUT", endpoint, params);
     return res.data;
   }
 }

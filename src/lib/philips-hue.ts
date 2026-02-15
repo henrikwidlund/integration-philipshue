@@ -16,7 +16,7 @@ import {
   LightStates,
   StatusCodes
 } from "@unfoldedcircle/integration-api";
-import Config, { ConfigEvent } from "../config.js";
+import Config, { ConfigEvent, GroupConfig, LightOrGroupConfig } from "../config.js";
 import log from "../log.js";
 import {
   brightnessToPercent,
@@ -24,14 +24,17 @@ import {
   convertHSVtoXY,
   convertXYtoHSV,
   delay,
+  getGroupFeatures,
   getHubUrl,
   getLightFeatures,
+  getMinMaxMirek,
+  getMostCommonGamut,
   mirekToColorTemp,
   percentToBrightness
 } from "../util.js";
 import HueApi, { HueError } from "./hue-api/api.js";
 import HueEventStream from "./hue-api/event-stream.js";
-import { HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
+import { CombinedGroupResource, HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
 import PhilipsHueSetup from "./setup.js";
 
 class PhilipsHue {
@@ -40,6 +43,9 @@ class PhilipsHue {
   private readonly setup: PhilipsHueSetup;
   private hueApi: HueApi;
   private eventStream: HueEventStream;
+  private groupedLightIdToGroupId: Map<string, string> = new Map();
+  private lightIdToGroupIds: Map<string, string[]> = new Map();
+  private entityIdToConfig: Map<string, LightOrGroupConfig> = new Map();
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -59,6 +65,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubConfig.username);
     }
     this.readEntitiesFromConfig();
+    this.updateEntityIndexes();
     this.setupDriverEvents();
     this.setupEventStreamEvents();
     log.info("Philips Hue driver initialized");
@@ -69,6 +76,25 @@ class PhilipsHue {
     for (const light of lights) {
       const lightEntity = new Light(light.id, light.name, { features: light.features });
       this.addAvailableLight(lightEntity);
+    }
+  }
+
+  private updateEntityIndexes() {
+    this.groupedLightIdToGroupId.clear();
+    this.lightIdToGroupIds.clear();
+    this.entityIdToConfig.clear();
+    const entities = this.config.getLights();
+    for (const entity of entities) {
+      this.entityIdToConfig.set(entity.id, entity);
+      if (this.isGroupConfig(entity)) {
+        entity.groupedLightIds.forEach((groupedLightId) => {
+          this.entityIdToConfig.set(groupedLightId, entity);
+          this.groupedLightIdToGroupId.set(groupedLightId, entity.id);
+        });
+        entity.childLightIds.forEach((lightId) => {
+          this.lightIdToGroupIds.set(lightId, [...(this.lightIdToGroupIds.get(lightId) ?? []), entity.id]);
+        });
+      }
     }
   }
 
@@ -109,6 +135,7 @@ class PhilipsHue {
       this.hueApi.setAuthKey(hubCfg.username);
       this.eventStream.connect(getHubUrl(hubCfg.ip), hubCfg.username);
     }
+    this.updateEntityIndexes();
   }
 
   private async onCfgRemove(_bridgeId?: string) {
@@ -126,22 +153,80 @@ class PhilipsHue {
       const light = new Light(event.data.id, event.data.name, { features: event.data.features });
       this.addAvailableLight(light);
     }
+    this.updateEntityIndexes();
   }
 
   private addAvailableLight(light: Light) {
-    light.setCmdHandler(this.handleLightCmd.bind(this));
+    light.setCmdHandler((entity, command, params) => {
+      const latestConfig = this.entityIdToConfig.get(entity.id);
+      if (!latestConfig) {
+        log.error("No config found for entity: %s", entity.id);
+        return Promise.resolve(StatusCodes.ServerError);
+      }
+      return this.handleLightCmd(entity, latestConfig, command, params);
+    });
     this.uc.addAvailableEntity(light);
   }
 
-  private async handleLightCmd(entity: Entity, command: string, params?: { [key: string]: string | number | boolean }) {
+  private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
+    return "groupType" in entityConfig;
+  }
+
+  private async handleLightCmd(
+    entity: Entity,
+    entityConfig: LightOrGroupConfig,
+    command: string,
+    params?: { [key: string]: string | number | boolean }
+  ): Promise<StatusCodes> {
+    const isGroup = this.isGroupConfig(entityConfig);
+    const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
+    if (!entityIds || entityIds.length === 0) {
+      log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
+      return StatusCodes.ServerError;
+    }
+
+    const results = new Set(
+      await Promise.all(
+        entityIds.map(async (entityId) => {
+          return await this.handleSingleLightCmd(entity, entityId, command, isGroup, params);
+        })
+      )
+    );
+
+    if (results.has(StatusCodes.ServerError)) {
+      return StatusCodes.ServerError;
+    }
+    if (results.has(StatusCodes.BadRequest)) {
+      return StatusCodes.BadRequest;
+    }
+    return StatusCodes.Ok;
+  }
+
+  private async handleSingleLightCmd(
+    entity: Entity,
+    entityId: string,
+    command: string,
+    isGroup: boolean,
+    params?: { [key: string]: string | number | boolean }
+  ): Promise<StatusCodes> {
     try {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entity.id, currentState !== LightStates.On);
+          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, !isGroup);
           break;
         }
         case LightCommands.On: {
+          if (
+            params?.brightness === undefined &&
+            params?.color_temperature === undefined &&
+            params?.hue === undefined
+          ) {
+            // if no parameters are provided, simply turn on the light
+            await this.hueApi.lightResource.setOn(entityId, true, !isGroup);
+            break;
+          }
+
           const req: Partial<LightResourceParams> = {};
           // ("brightness" (0-255), "color_temperature" (0-100), "hue", "saturation".)
           if (params?.brightness !== undefined) {
@@ -158,11 +243,11 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
           }
-          await this.hueApi.lightResource.updateLightState(entity.id, req);
+          await this.hueApi.lightResource.updateLightState(entityId, req, !isGroup);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entity.id, false);
+          await this.hueApi.lightResource.setOn(entityId, false, !isGroup);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
@@ -191,10 +276,34 @@ class PhilipsHue {
   private handleEventStreamUpdate(event: HueEvent) {
     for (const data of event.data) {
       if (["light", "grouped_light"].includes(data.type)) {
+        let entityId: string;
+        if (data.type === "grouped_light") {
+          const mappedId = this.groupedLightIdToGroupId.get(data.id);
+          if (!mappedId) {
+            log.debug("Skipping grouped_light event with unmapped id '%s'; no matching configured entity.", data.id);
+            continue;
+          }
+          entityId = mappedId;
+        } else {
+          entityId = data.id;
+        }
         log.debug("event stream light update: %s", JSON.stringify(data));
-        this.syncLightState(data.id, data).catch((error) =>
+        // Stream updates for grouped lights have the same contract as single lights
+        this.syncLightState(entityId, data).catch((error) =>
           log.error("Syncing lights failed for event stream update:", error)
         );
+
+        if (data.type === "light") {
+          const groupIds = this.lightIdToGroupIds.get(data.id);
+          if (groupIds) {
+            for (const groupId of groupIds) {
+              // intentionally update the group with light data to update the color and gamut which is not sent for groups
+              this.syncLightState(groupId, data).catch((error) =>
+                log.error("Syncing group lights failed for event stream update:", error)
+              );
+            }
+          }
+        }
       }
     }
   }
@@ -207,6 +316,7 @@ class PhilipsHue {
       for (const id of ids) {
         await this.updateLight(id);
       }
+      this.updateEntityIndexes();
       // make sure the event stream is connected
       this.eventStream.connect(getHubUrl(hubConfig.ip), hubConfig.username);
     } else {
@@ -245,16 +355,46 @@ class PhilipsHue {
       const entityId = entity.entity_id as string;
       await this.updateLight(entityId);
     }
+    this.updateEntityIndexes();
     // TODO if an error occurred while updating lights: perform a manual connectivity test and set entity states
   }
 
   private async updateLight(entityId: string): Promise<boolean> {
     try {
-      const light = await this.hueApi.lightResource.getLight(entityId);
-
-      const lightFeatures = getLightFeatures(light);
-      this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
-      await this.syncLightState(entityId, light);
+      const config = this.entityIdToConfig.get(entityId);
+      if (!config) {
+        log.warn("No config found for entity %s; skipping update", entityId);
+        return false;
+      }
+      const isGroup = this.isGroupConfig(config);
+      if (isGroup) {
+        const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);
+        if (!["room", "zone"].includes(groupResource.type)) {
+          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, entityId);
+          return false;
+        }
+        const groupFeatures = getGroupFeatures(groupResource);
+        this.config.updateLight(entityId, {
+          name: groupResource.metadata.name,
+          features: groupFeatures,
+          groupedLightIds: groupResource.grouped_lights.map((gl) => gl.id),
+          groupType: groupResource.type === "zone" ? "zone" : "room",
+          childLightIds: groupResource.lights.map((light) => light.id),
+          gamut_type: getMostCommonGamut(groupResource),
+          mirek_schema: getMinMaxMirek(groupResource)
+        });
+        await this.syncGroupState(entityId, groupResource);
+      } else {
+        const light = await this.hueApi.lightResource.getLight(entityId);
+        const lightFeatures = getLightFeatures(light);
+        this.config.updateLight(entityId, {
+          name: light.metadata.name,
+          features: lightFeatures,
+          gamut_type: light.color?.gamut_type,
+          mirek_schema: light.color_temperature?.mirek_schema
+        });
+        await this.syncLightState(entityId, light);
+      }
 
       return true;
     } catch (error: unknown) {
@@ -289,11 +429,6 @@ class PhilipsHue {
   }
 
   private async syncLightState(entityId: string, light: Partial<LightResource>) {
-    // only `light` types are supported at the moment: ignore everything else
-    if (light.type !== "light") {
-      return;
-    }
-
     const entity = this.uc.getConfiguredEntities().getEntity(entityId);
     if (!entity) {
       log.debug("entity is not configured, skipping sync", entityId);
@@ -306,10 +441,8 @@ class PhilipsHue {
     if (light.dimming) {
       lightState[LightAttributes.Brightness] = percentToBrightness(light.dimming.brightness);
     }
-
     if (light.color_temperature && light.color_temperature.mirek_valid) {
-      const entityColorTemp = mirekToColorTemp(light.color_temperature.mirek);
-      lightState[LightAttributes.ColorTemperature] = entityColorTemp;
+      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(light.color_temperature.mirek);
     }
 
     if (light.color && light.color.xy) {
@@ -318,6 +451,46 @@ class PhilipsHue {
       lightState[LightAttributes.Saturation] = sat;
     }
     this.uc.getConfiguredEntities().updateEntityAttributes(entityId, lightState);
+  }
+
+  private async syncGroupState(entityId: string, group: Partial<CombinedGroupResource>) {
+    const entity = this.uc.getConfiguredEntities().getEntity(entityId);
+    if (!entity) {
+      log.debug("entity is not configured, skipping sync", entityId);
+      return;
+    }
+    const groupState: Record<string, string | number> = {};
+    const groupedLights = group.grouped_lights;
+    if (groupedLights && groupedLights.length > 0) {
+      const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
+      const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
+      if (anyOn) {
+        groupState[LightAttributes.State] = LightStates.On;
+      } else if (anyOff) {
+        groupState[LightAttributes.State] = LightStates.Off;
+      }
+    }
+
+    const dimming = groupedLights?.find((groupLight) => groupLight.dimming);
+    if (dimming) {
+      groupState[LightAttributes.Brightness] = percentToBrightness(dimming.dimming.brightness);
+    }
+
+    const colorTemp =
+      groupedLights?.find((groupLight) => groupLight.color_temperature?.mirek_valid) ??
+      group.lights?.find((light) => light.color_temperature?.mirek_valid);
+    if (colorTemp?.color_temperature) {
+      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(colorTemp.color_temperature.mirek);
+    }
+
+    const color =
+      groupedLights?.find((groupLight) => groupLight.color?.xy) ?? group.lights?.find((light) => light.color?.xy);
+    if (color?.color && color.color.xy) {
+      const { hue, sat } = convertXYtoHSV(color.color.xy.x, color.color.xy.y, color.dimming?.brightness);
+      groupState[LightAttributes.Hue] = hue;
+      groupState[LightAttributes.Saturation] = sat;
+    }
+    this.uc.getConfiguredEntities().updateEntityAttributes(entityId, groupState);
   }
 
   private updateEntityStates(state: LightStates) {

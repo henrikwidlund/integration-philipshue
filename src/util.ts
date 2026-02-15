@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { LightResource } from "./lib/hue-api/types.js";
+import { CombinedGroupResource, GamutType, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 
@@ -26,7 +26,7 @@ export function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function getLightFeatures(light: LightResource) {
+export function getLightFeatures(light: LightResource): LightFeatures[] {
   const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
   if (light.dimming) {
     features.push(LightFeatures.Dim);
@@ -38,6 +38,85 @@ export function getLightFeatures(light: LightResource) {
     features.push(LightFeatures.Color);
   }
   return features;
+}
+
+export function getGroupFeatures(group: CombinedGroupResource): LightFeatures[] {
+  const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
+  let hasDim = false;
+  let hasColorTemperature = false;
+  let hasColor = false;
+
+  for (const groupLight of group.grouped_lights) {
+    if (!hasDim && groupLight.dimming) {
+      hasDim = true;
+    }
+    if (!hasColorTemperature && groupLight.color_temperature?.mirek_schema) {
+      hasColorTemperature = true;
+    }
+    if (!hasColor && groupLight.color?.xy) {
+      hasColor = true;
+    }
+    if (hasDim && hasColorTemperature && hasColor) {
+      break;
+    }
+  }
+
+  if (!(hasDim && hasColorTemperature && hasColor)) {
+    for (const childLight of group.lights) {
+      if (!hasDim && childLight.dimming) {
+        hasDim = true;
+      }
+      if (!hasColorTemperature && childLight.color_temperature?.mirek_schema) {
+        hasColorTemperature = true;
+      }
+      if (!hasColor && childLight.color?.xy) {
+        hasColor = true;
+      }
+      if (hasDim && hasColorTemperature && hasColor) {
+        break;
+      }
+    }
+  }
+  if (hasDim) {
+    features.push(LightFeatures.Dim);
+  }
+  if (hasColorTemperature) {
+    features.push(LightFeatures.ColorTemperature);
+  }
+  if (hasColor) {
+    features.push(LightFeatures.Color);
+  }
+
+  return features;
+}
+
+export function getMostCommonGamut(group: CombinedGroupResource): GamutType | undefined {
+  const gamutTypes = group.lights
+    .map((light) => light.color?.gamut_type)
+    .filter((gamut): gamut is GamutType => gamut !== undefined);
+
+  const gamutCounts = gamutTypes.reduce(
+    (acc, gamut) => {
+      acc[gamut] = (acc[gamut] || 0) + 1;
+      return acc;
+    },
+    {} as Record<GamutType, number>
+  );
+  return Object.entries(gamutCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as GamutType | undefined;
+}
+
+export function getMinMaxMirek(
+  group: CombinedGroupResource
+): { mirek_minimum: number; mirek_maximum: number } | undefined {
+  const mirekSchemas = group.lights
+    .map((light) => light.color_temperature?.mirek_schema)
+    .filter((schema): schema is { mirek_minimum: number; mirek_maximum: number } => schema !== undefined);
+  return mirekSchemas.length > 0
+    ? {
+        mirek_minimum: Math.min(...mirekSchemas.map((s) => s.mirek_minimum)),
+        mirek_maximum: Math.max(...mirekSchemas.map((s) => s.mirek_maximum))
+      }
+    : undefined;
 }
 
 export function convertXYtoHSV(x: number, y: number, lightness = 1) {
@@ -68,12 +147,10 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
 
   const ScaledS = Math.round(S * 255);
 
-  const res = {
+  return {
     hue: Math.round(H) % 360,
     sat: Math.max(0, Math.min(ScaledS, 255))
   };
-
-  return res;
 }
 
 export function convertHSVtoXY(hue: number, saturation: number, value: number) {

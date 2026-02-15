@@ -45,6 +45,11 @@ export interface LightResourceResult {
   data: LightResource[];
 }
 
+export interface GroupLightResult {
+  errors: { description: string }[];
+  data: GroupedLightResource[];
+}
+
 export interface LightResource {
   id: string;
   id_v1?: string;
@@ -89,7 +94,7 @@ export interface LightResource {
       green: { x: number; y: number };
       blue: { x: number; y: number };
     };
-    gamut_type: string;
+    gamut_type: GamutType;
   };
   dynamics: {
     status: string;
@@ -137,6 +142,56 @@ export interface LightResource {
     };
   };
   type: string;
+}
+
+export interface GroupedLightResource {
+  id: string;
+  id_v1?: string;
+  owner: {
+    rid: string;
+    rtype: string;
+  };
+  on: {
+    on: boolean;
+  };
+  dimming: {
+    brightness: number;
+    min_dim_level?: number;
+  };
+  dimming_delta: unknown;
+  color_temperature?: {
+    mirek: number;
+    mirek_valid: boolean;
+    mirek_schema: {
+      mirek_minimum: number;
+      mirek_maximum: number;
+    };
+  };
+  color_temperature_delta: unknown;
+  color?: {
+    xy: {
+      x: number;
+      y: number;
+    };
+    gamut: {
+      red: { x: number; y: number };
+      green: { x: number; y: number };
+      blue: { x: number; y: number };
+    };
+    gamut_type: GamutType;
+  };
+  alert: {
+    action_values: string[];
+  };
+  signaling: {
+    signal_values: string[];
+  };
+  dynamics: {
+    status: string;
+    status_values: string[];
+    speed: number;
+    speed_valid: boolean;
+  };
 }
 
 export interface LightResourceParams {
@@ -206,3 +261,130 @@ export interface HueEvent {
   }[];
   creationtime: string;
 }
+
+export interface GroupResource {
+  id: string;
+  id_v1?: string;
+  children: ResourceIdentifier[];
+  services: ResourceIdentifier[];
+  type: ResourceType;
+  metadata: {
+    name: string;
+    archetype: Archetype;
+  };
+}
+
+export interface ResourceIdentifier {
+  rid: string;
+  rtype: ResourceType;
+}
+
+export type GroupType = "zone" | "room";
+
+export type ResourceType = KnownResourceType | (string & {});
+export type KnownResourceType =
+  | "device"
+  | "bridge_home"
+  | "room"
+  | "zone"
+  | "service_group"
+  | "light"
+  | "button"
+  | "bell_button"
+  | "relative_rotary"
+  | "temperature"
+  | "light_level"
+  | "motion"
+  | "camera_motion"
+  | "entertainment"
+  | "contact"
+  | "tamper"
+  | "convenience_area_motion"
+  | "security_area_motion"
+  | "speaker"
+  | "grouped_light"
+  | "grouped_motion"
+  | "grouped_light_level"
+  | "device_power"
+  | "device_software_update"
+  | "zigbee_connectivity"
+  | "zgp_connectivity"
+  | "bridge"
+  | "motion_area_candidate"
+  | "wifi_connectivity"
+  | "zigbee_device_discovery"
+  | "homekit"
+  | "matter"
+  | "matter_fabric"
+  | "scene"
+  | "entertainment_configuration"
+  | "public_image"
+  | "auth_v1"
+  | "behavior_script"
+  | "behavior_instance"
+  | "geofence_client"
+  | "geolocation"
+  | "smart_scene"
+  | "motion_area_configuration"
+  | "clip";
+
+export type Archetype = KnownArchetype | (string & {});
+export type KnownArchetype =
+  | "living_room"
+  | "kitchen"
+  | "dining"
+  | "bedroom"
+  | "kids_bedroom"
+  | "bathroom"
+  | "nursery"
+  | "recreation"
+  | "office"
+  | "gym"
+  | "hallway"
+  | "toilet"
+  | "front_door"
+  | "garage"
+  | "terrace"
+  | "garden"
+  | "driveway"
+  | "carport"
+  | "home"
+  | "downstairs"
+  | "upstairs"
+  | "top_floor"
+  | "attic"
+  | "guest_room"
+  | "staircase"
+  | "lounge"
+  | "man_cave"
+  | "computer"
+  | "studio"
+  | "music"
+  | "tv"
+  | "reading"
+  | "closet"
+  | "storage"
+  | "laundry_room"
+  | "balcony"
+  | "porch"
+  | "barbecue"
+  | "pool"
+  | "other";
+
+export interface GroupResourceResponse {
+  errors: { description: string }[];
+  data: GroupResource[];
+}
+
+export interface CombinedGroupResource {
+  id: string;
+  id_v1?: string;
+  lights: LightResource[];
+  grouped_lights: GroupedLightResource[];
+  type: ResourceType;
+  metadata: {
+    name: string;
+  };
+}
+
+export type GamutType = "A" | "B" | "C";
