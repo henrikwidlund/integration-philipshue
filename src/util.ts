@@ -96,7 +96,10 @@ export function getMostCommonGamut(group: CombinedGroupResource): GamutType | un
     .filter((gamut): gamut is GamutType => gamut !== undefined);
 
   const gamutCounts = gamutTypes.reduce(
-    (acc, gamut) => ({ ...acc, [gamut]: (acc[gamut] || 0) + 1 }),
+    (acc, gamut) => {
+      acc[gamut] = (acc[gamut] || 0) + 1;
+      return acc;
+    },
     {} as Record<GamutType, number>
   );
   return Object.entries(gamutCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as GamutType | undefined;
