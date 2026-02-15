@@ -155,7 +155,7 @@ class GroupResource {
       id_v1: group.id_v1,
       lights: mappedChildLights,
       grouped_lights: groups.filter(
-        (groupedLight) => (groupedLight as GroupedLightResource) !== null
+        (groupedLight): groupedLight is GroupedLightResource => groupedLight !== null
       ) as GroupedLightResource[],
       type: group.type,
       metadata: {
