@@ -297,6 +297,7 @@ class PhilipsHue {
           const groupIds = this.lightIdToGroupIds.get(data.id);
           if (groupIds) {
             for (const groupId of groupIds) {
+              // intentionally update the group with light data to update the color and gamut which is not sent for groups
               this.syncLightState(groupId, data).catch((error) =>
                 log.error("Syncing group lights failed for event stream update:", error)
               );
@@ -459,26 +460,31 @@ class PhilipsHue {
       return;
     }
     const groupState: Record<string, string | number> = {};
-    const onState = group.grouped_lights?.find((groupLight) => groupLight.on);
-    if (onState) {
-      groupState[LightAttributes.State] = onState.on.on ? LightStates.On : LightStates.Off;
+    const groupedLights = group.grouped_lights;
+    if (groupedLights && groupedLights.length > 0) {
+      const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
+      const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
+      if (anyOn) {
+        groupState[LightAttributes.State] = LightStates.On;
+      } else if (anyOff) {
+        groupState[LightAttributes.State] = LightStates.Off;
+      }
     }
 
-    const dimming = group.grouped_lights?.find((groupLight) => groupLight.dimming);
+    const dimming = groupedLights?.find((groupLight) => groupLight.dimming);
     if (dimming) {
       groupState[LightAttributes.Brightness] = percentToBrightness(dimming.dimming.brightness);
     }
 
     const colorTemp =
-      group.grouped_lights?.find((groupLight) => groupLight.color_temperature?.mirek_valid) ??
+      groupedLights?.find((groupLight) => groupLight.color_temperature?.mirek_valid) ??
       group.lights?.find((light) => light.color_temperature?.mirek_valid);
     if (colorTemp?.color_temperature) {
       groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(colorTemp.color_temperature.mirek);
     }
 
     const color =
-      group.grouped_lights?.find((groupLight) => groupLight.color?.xy) ??
-      group.lights?.find((light) => light.color?.xy);
+      groupedLights?.find((groupLight) => groupLight.color?.xy) ?? group.lights?.find((light) => light.color?.xy);
     if (color?.color && color.color.xy) {
       const { hue, sat } = convertXYtoHSV(color.color.xy.x, color.color.xy.y, color.dimming?.brightness);
       groupState[LightAttributes.Hue] = hue;

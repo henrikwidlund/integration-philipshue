@@ -62,11 +62,13 @@ class GroupResource {
         const mappedChildLights =
           groupType === "zone"
             ? group.children
+                .filter((child) => child.rtype === lightFilterType)
                 .map((child) => lightById.get(child.rid))
                 .filter((light): light is LightResourceData => light !== undefined)
             : Array.from(
                 new Set(
                   group.children
+                    .filter((child) => child.rtype === lightFilterType)
                     .map((child) => {
                       return (
                         devices

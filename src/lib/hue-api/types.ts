@@ -178,7 +178,7 @@ export interface GroupedLightResource {
       green: { x: number; y: number };
       blue: { x: number; y: number };
     };
-    gamut_type: string;
+    gamut_type: GamutType;
   };
   alert: {
     action_values: string[];
