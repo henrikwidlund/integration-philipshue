@@ -27,7 +27,7 @@ export type LightOrGroupConfig = LightConfig | GroupConfig;
 
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
-  entities: { [key: string]: LightOrGroupConfig };
+  lights: { [key: string]: LightOrGroupConfig };
 }
 
 export type ConfigEvent =
@@ -35,7 +35,7 @@ export type ConfigEvent =
   | { type: "light-updated"; data: LightOrGroupConfig & { id: string } };
 
 class Config extends EventEmitter {
-  private config: PhilipsHueConfig = { entities: {} };
+  private config: PhilipsHueConfig = { lights: {} };
   private readonly configPath: string;
   private readonly cb?: (event: ConfigEvent) => void;
 
@@ -73,7 +73,7 @@ class Config extends EventEmitter {
   }
 
   public addLight(id: string, light: LightOrGroupConfig) {
-    this.config.entities[id] = light;
+    this.config.lights[id] = light;
     this.saveToFile();
     if (this.cb) {
       this.cb({ type: "light-added", data: { id, ...light } });
@@ -81,21 +81,21 @@ class Config extends EventEmitter {
   }
 
   public getLights(): (LightOrGroupConfig & { id: string })[] {
-    return Object.entries(this.config.entities).map(([id, light]) => ({ id, ...light }));
+    return Object.entries(this.config.lights).map(([id, light]) => ({ id, ...light }));
   }
 
   public updateLight(id: string, light: LightOrGroupConfig) {
-    this.config.entities[id] = light;
+    this.config.lights[id] = light;
     this.saveToFile();
   }
 
   public getLight(id: string): LightOrGroupConfig | undefined {
-    return this.config.entities[id];
+    return this.config.lights[id];
   }
 
   public removeHub() {
     const bridgeId = this.config.hub?.bridgeId;
-    this.config = { entities: {} };
+    this.config = { lights: {} };
     this.saveToFile();
     if (bridgeId) {
       this.emit("remove", bridgeId);
@@ -103,7 +103,7 @@ class Config extends EventEmitter {
   }
 
   public clear() {
-    this.config = { entities: {} };
+    this.config = { lights: {} };
     this.saveToFile();
     this.emit("remove", null);
   }
