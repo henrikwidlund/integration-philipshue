@@ -60,7 +60,7 @@ class GroupResource {
         });
 
         const mappedChildLights =
-          groupType == "zone"
+          groupType === "zone"
             ? group.children
                 .map((child) => lightById.get(child.rid))
                 .filter((light): light is LightResourceData => light !== undefined)
