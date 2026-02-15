@@ -116,6 +116,11 @@ export function getMinMaxMirek(
     : undefined;
 }
 
+export function convertXYtoHSV(x: number, y: number, lightness = 1) {
+  const Y = lightness;
+  const X = (x / y) * Y;
+  const Z = ((1 - x - y) / y) * Y;
+
   const R = 3.2406 * X - 1.5372 * Y - 0.4986 * Z;
   const G = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
   const B = 0.0557 * X - 0.204 * Y + 1.057 * Z;
