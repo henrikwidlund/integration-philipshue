@@ -453,7 +453,7 @@ class PhilipsHue {
     this.uc.getConfiguredEntities().updateEntityAttributes(entityId, lightState);
   }
 
-  private async syncGroupState(entityId: string, group: Partial<CombinedGroupResource>) {
+  private async syncGroupState(entityId: string, group: CombinedGroupResource) {
     const entity = this.uc.getConfiguredEntities().getEntity(entityId);
     if (!entity) {
       log.debug("entity is not configured, skipping sync", entityId);
@@ -461,14 +461,12 @@ class PhilipsHue {
     }
     const groupState: Record<string, string | number> = {};
     const groupedLights = group.grouped_lights;
-    if (groupedLights && groupedLights.length > 0) {
-      const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
-      const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
-      if (anyOn) {
-        groupState[LightAttributes.State] = LightStates.On;
-      } else if (anyOff) {
-        groupState[LightAttributes.State] = LightStates.Off;
-      }
+    const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
+    const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
+    if (anyOn) {
+      groupState[LightAttributes.State] = LightStates.On;
+    } else if (anyOff) {
+      groupState[LightAttributes.State] = LightStates.Off;
     }
 
     const dimming = groupedLights?.find((groupLight) => groupLight.dimming);
