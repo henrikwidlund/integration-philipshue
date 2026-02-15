@@ -27,6 +27,8 @@ import {
   getGroupFeatures,
   getHubUrl,
   getLightFeatures,
+  getMinMaxMirek,
+  getMostCommonGamut,
   mirekToColorTemp,
   percentToBrightness
 } from "../util.js";
@@ -42,6 +44,7 @@ class PhilipsHue {
   private hueApi: HueApi;
   private eventStream: HueEventStream;
   private groupedLightIdToGroupId: Map<string, string> = new Map();
+  private lightIdToGroupIds: Map<string, string[]> = new Map();
   private entityIdToConfig: Map<string, LightOrGroupConfig> = new Map();
 
   constructor() {
@@ -78,6 +81,7 @@ class PhilipsHue {
 
   private updateEntityIndexes() {
     this.groupedLightIdToGroupId.clear();
+    this.lightIdToGroupIds.clear();
     this.entityIdToConfig.clear();
     const entities = this.config.getLights();
     for (const entity of entities) {
@@ -86,6 +90,9 @@ class PhilipsHue {
         entity.groupedLightIds.forEach((groupedLightId) => {
           this.entityIdToConfig.set(groupedLightId, entity);
           this.groupedLightIdToGroupId.set(groupedLightId, entity.id);
+        });
+        entity.childLightIds.forEach((lightId) => {
+          this.lightIdToGroupIds.set(lightId, [...(this.lightIdToGroupIds.get(lightId) ?? []), entity.id]);
         });
       }
     }
@@ -285,6 +292,17 @@ class PhilipsHue {
         this.syncLightState(entityId, data).catch((error) =>
           log.error("Syncing lights failed for event stream update:", error)
         );
+
+        if (data.type === "light") {
+          const groupIds = this.lightIdToGroupIds.get(data.id);
+          if (groupIds) {
+            for (const groupId of groupIds) {
+              this.syncLightState(groupId, data).catch((error) =>
+                log.error("Syncing group lights failed for event stream update:", error)
+              );
+            }
+          }
+        }
       }
     }
   }
@@ -360,13 +378,20 @@ class PhilipsHue {
           features: groupFeatures,
           groupedLightIds: groupResource.grouped_lights.map((gl) => gl.id),
           groupType: groupResource.type === "zone" ? "zone" : "room",
-          childLightIds: groupResource.lights.map((light) => light.id)
+          childLightIds: groupResource.lights.map((light) => light.id),
+          gamut_type: getMostCommonGamut(groupResource),
+          mirek_schema: getMinMaxMirek(groupResource)
         });
         await this.syncGroupState(entityId, groupResource);
       } else {
         const light = await this.hueApi.lightResource.getLight(entityId);
         const lightFeatures = getLightFeatures(light);
-        this.config.updateLight(entityId, { name: light.metadata.name, features: lightFeatures });
+        this.config.updateLight(entityId, {
+          name: light.metadata.name,
+          features: lightFeatures,
+          gamut_type: light.color?.gamut_type,
+          mirek_schema: light.color_temperature?.mirek_schema
+        });
         await this.syncLightState(entityId, light);
       }
 

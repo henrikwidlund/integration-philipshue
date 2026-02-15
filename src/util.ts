@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { CombinedGroupResource, LightResource } from "./lib/hue-api/types.js";
+import { CombinedGroupResource, GamutType, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 
@@ -90,10 +90,31 @@ export function getGroupFeatures(group: CombinedGroupResource): LightFeatures[] 
   return features;
 }
 
-export function convertXYtoHSV(x: number, y: number, lightness = 1) {
-  const Y = lightness;
-  const X = (x / y) * Y;
-  const Z = ((1 - x - y) / y) * Y;
+export function getMostCommonGamut(group: CombinedGroupResource): GamutType | undefined {
+  const gamutTypes = group.lights
+    .map((light) => light.color?.gamut_type)
+    .filter((gamut): gamut is GamutType => gamut !== undefined);
+
+  const gamutCounts = gamutTypes.reduce(
+    (acc, gamut) => ({ ...acc, [gamut]: (acc[gamut] || 0) + 1 }),
+    {} as Record<GamutType, number>
+  );
+  return Object.entries(gamutCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as GamutType | undefined;
+}
+
+export function getMinMaxMirek(
+  group: CombinedGroupResource
+): { mirek_minimum: number; mirek_maximum: number } | undefined {
+  const mirekSchemas = group.lights
+    .map((light) => light.color_temperature?.mirek_schema)
+    .filter((schema): schema is { mirek_minimum: number; mirek_maximum: number } => schema !== undefined);
+  return mirekSchemas.length > 0
+    ? {
+        mirek_minimum: Math.min(...mirekSchemas.map((s) => s.mirek_minimum)),
+        mirek_maximum: Math.max(...mirekSchemas.map((s) => s.mirek_maximum))
+      }
+    : undefined;
+}
 
   const R = 3.2406 * X - 1.5372 * Y - 0.4986 * Z;
   const G = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;

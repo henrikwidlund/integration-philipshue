@@ -19,7 +19,16 @@ import {
 import { Bonjour } from "bonjour-service";
 import Config from "../config.js";
 import log from "../log.js";
-import { convertImageToBase64, delay, getHubUrl, getLightFeatures, getGroupFeatures, i18all } from "../util.js";
+import {
+  convertImageToBase64,
+  delay,
+  getHubUrl,
+  getLightFeatures,
+  getGroupFeatures,
+  i18all,
+  getMostCommonGamut,
+  getMinMaxMirek
+} from "../util.js";
 import HueApi from "./hue-api/api.js";
 import { LightResource, GroupType, CombinedGroupResource } from "./hue-api/types.js";
 import os from "os";
@@ -333,7 +342,12 @@ class PhilipsHueSetup {
   private addAvailableLights(lights: LightResource[]) {
     lights.forEach((light) => {
       const features = getLightFeatures(light);
-      this.config.addLight(light.id, { name: light.metadata.name, features });
+      this.config.addLight(light.id, {
+        name: light.metadata.name,
+        features,
+        gamut_type: light.color?.gamut_type,
+        mirek_schema: light.color_temperature?.mirek_schema
+      });
     });
   }
 
@@ -345,7 +359,9 @@ class PhilipsHueSetup {
         features,
         groupedLightIds: group.grouped_lights.map((gl) => gl.id),
         childLightIds: group.lights.map((light) => light.id),
-        groupType
+        groupType,
+        gamut_type: getMostCommonGamut(group),
+        mirek_schema: getMinMaxMirek(group)
       });
     });
   }

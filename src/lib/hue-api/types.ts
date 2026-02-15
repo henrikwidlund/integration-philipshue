@@ -94,7 +94,7 @@ export interface LightResource {
       green: { x: number; y: number };
       blue: { x: number; y: number };
     };
-    gamut_type: string;
+    gamut_type: GamutType;
   };
   dynamics: {
     status: string;
@@ -386,3 +386,5 @@ export interface CombinedGroupResource {
     name: string;
   };
 }
+
+export type GamutType = "A" | "B" | "C";

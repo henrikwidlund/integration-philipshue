@@ -10,13 +10,15 @@ import EventEmitter from "node:events";
 import fs from "fs";
 import path from "path";
 import log from "./log.js";
-import { GroupType } from "./lib/hue-api/types.js";
+import { GamutType, GroupType } from "./lib/hue-api/types.js";
 
 const CFG_FILENAME = "philips_hue_config.json";
 
 export interface LightConfig {
   name: string;
   features: LightFeatures[];
+  gamut_type?: GamutType;
+  mirek_schema?: { mirek_minimum: number; mirek_maximum: number };
 }
 export interface GroupConfig extends LightConfig {
   groupType: GroupType;
