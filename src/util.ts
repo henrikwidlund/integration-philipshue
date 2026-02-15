@@ -42,24 +42,51 @@ export function getLightFeatures(light: LightResource): LightFeatures[] {
 
 export function getGroupFeatures(group: CombinedGroupResource): LightFeatures[] {
   const features: LightFeatures[] = [LightFeatures.OnOff, LightFeatures.Toggle];
-  if (
-    group.grouped_lights.some((groupLight) => groupLight.dimming) ||
-    group.lights.some((childLight) => childLight.dimming)
-  ) {
+  let hasDim = false;
+  let hasColorTemperature = false;
+  let hasColor = false;
+
+  for (const groupLight of group.grouped_lights) {
+    if (!hasDim && groupLight.dimming) {
+      hasDim = true;
+    }
+    if (!hasColorTemperature && groupLight.color_temperature?.mirek_schema) {
+      hasColorTemperature = true;
+    }
+    if (!hasColor && groupLight.color?.xy) {
+      hasColor = true;
+    }
+    if (hasDim && hasColorTemperature && hasColor) {
+      break;
+    }
+  }
+
+  if (!(hasDim && hasColorTemperature && hasColor)) {
+    for (const childLight of group.lights) {
+      if (!hasDim && childLight.dimming) {
+        hasDim = true;
+      }
+      if (!hasColorTemperature && childLight.color_temperature?.mirek_schema) {
+        hasColorTemperature = true;
+      }
+      if (!hasColor && childLight.color?.xy) {
+        hasColor = true;
+      }
+      if (hasDim && hasColorTemperature && hasColor) {
+        break;
+      }
+    }
+  }
+  if (hasDim) {
     features.push(LightFeatures.Dim);
   }
-  if (
-    group.grouped_lights.some((groupLight) => groupLight.color_temperature?.mirek_schema) ||
-    group.lights.some((childLight) => childLight.color_temperature?.mirek_schema)
-  ) {
+  if (hasColorTemperature) {
     features.push(LightFeatures.ColorTemperature);
   }
-  if (
-    group.grouped_lights.some((groupLight) => groupLight.color?.xy) ||
-    group.lights.some((childLight) => childLight.color?.xy)
-  ) {
+  if (hasColor) {
     features.push(LightFeatures.Color);
   }
+
   return features;
 }
 
