@@ -181,7 +181,7 @@ class PhilipsHue {
     const isGroup = this.isGroupConfig(entityConfig);
     const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
     if (!entityIds || entityIds.length === 0) {
-      log.error("handleLightCmd, missing groupedLightId for group entity: %s", entity.id);
+      log.error("handleLightCmd, missing groupedLightIds for group entity: %s", entity.id);
       return StatusCodes.ServerError;
     }
 

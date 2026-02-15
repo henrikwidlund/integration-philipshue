@@ -95,6 +95,8 @@ export function getMostCommonGamut(group: CombinedGroupResource): GamutType | un
     .map((light) => light.color?.gamut_type)
     .filter((gamut): gamut is GamutType => gamut !== undefined);
 
+  if (!gamutTypes) return undefined;
+
   const gamutCounts = gamutTypes.reduce(
     (acc, gamut) => {
       acc[gamut] = (acc[gamut] || 0) + 1;
