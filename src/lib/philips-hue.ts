@@ -298,7 +298,7 @@ class PhilipsHue {
           if (groupIds) {
             for (const groupId of groupIds) {
               // intentionally update the group with light data to update the color and gamut which is not sent for groups
-              this.syncLightState(groupId, data).catch((error) =>
+              this.syncLightState(groupId, { ...data, on: undefined, dimming: undefined }).catch((error) =>
                 log.error("Syncing group lights failed for event stream update:", error)
               );
             }
