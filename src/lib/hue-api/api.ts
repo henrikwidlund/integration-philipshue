@@ -5,9 +5,7 @@
  * @license Mozilla Public License Version 2.0, see LICENSE for more details.
  */
 
-import axios from "axios";
-import rateLimit from "axios-rate-limit";
-import type { RateLimitedAxiosInstance } from "axios-rate-limit";
+import axios, { AxiosInstance } from "axios";
 import https from "node:https";
 import { StatusCodes } from "@unfoldedcircle/integration-api";
 import log from "../../log.js";
@@ -50,27 +48,22 @@ class HueApi implements ResourceApi {
   private hubUrl?: string;
   public readonly lightResource: LightResource;
   public readonly groupResource: GroupResource;
-  private axiosInstance: RateLimitedAxiosInstance;
+  private axiosInstance: AxiosInstance;
 
   constructor(hubUrl?: string, requestTimeout: number = 1500) {
     this.hubUrl = hubUrl;
     this.lightResource = new LightResource(this);
     this.groupResource = new GroupResource(this, this.lightResource);
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
-    this.axiosInstance = rateLimit(
-      axios.create({
-        baseURL: this.hubUrl,
-        timeout: requestTimeout,
-        httpsAgent: new https.Agent({
-          rejectUnauthorized: false,
-          checkServerIdentity: () => {
-            return undefined;
-          }
-        })
-      }),
-      { maxRPS: 25 }
-    );
+    this.axiosInstance = axios.create({
+      baseURL: this.hubUrl,
+      timeout: requestTimeout,
+      httpsAgent: new https.Agent({
+        rejectUnauthorized: false,
+        checkServerIdentity: () => {
+          return undefined;
+        }
+      })
+    });
   }
 
   setBaseUrl(hubUrl: string) {
