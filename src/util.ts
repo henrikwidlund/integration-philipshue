@@ -68,18 +68,16 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
 
   const ScaledS = Math.round(S * 255);
 
-  const res = {
+  return {
     hue: Math.round(H) % 360,
     sat: Math.max(0, Math.min(ScaledS, 255))
   };
-
-  return res;
 }
 
 export function convertHSVtoXY(hue: number, saturation: number, value: number) {
   const h = hue / 60;
-  const s = saturation / 100;
-  const v = value / 100;
+  const s = saturation / 255;
+  const v = value;
 
   const c = v * s;
   const x = c * (1 - Math.abs((h % 2) - 1));
