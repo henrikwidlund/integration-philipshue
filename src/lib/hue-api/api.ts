@@ -155,6 +155,20 @@ class HueApi implements ResourceApi {
         generateclientkey: true
       });
       if (!data[0]?.success) {
+        /**
+         * Response if button wasn't pressed:
+         * ```json
+         * [
+         *   {
+         *     "error": {
+         *       "type": 101,
+         *       "address": "",
+         *       "description": "link button not pressed"
+         *     }
+         *   }
+         * ]
+         * ```
+         */
         throw new HueError(`Failed to generate auth key: ${data[0]?.error?.description}`, StatusCodes.BadRequest);
       }
       return data[0].success;
