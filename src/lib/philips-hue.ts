@@ -19,6 +19,8 @@ import {
 import Config, { ConfigEvent, GroupConfig, LightOrGroupConfig } from "../config.js";
 import log from "../log.js";
 import {
+  addAvailableGroups,
+  addAvailableLights,
   brightnessToPercent,
   colorTempToMirek,
   convertHSVtoXY,
@@ -110,6 +112,8 @@ class PhilipsHue {
   private setupEventStreamEvents() {
     const hubConfig = this.config.getHubConfig();
     this.eventStream.on("update", this.handleEventStreamUpdate.bind(this));
+    this.eventStream.on("add", this.handleEventStreamAdd.bind(this));
+    this.eventStream.on("delete", this.handleEventStreamDelete.bind(this));
     this.eventStream.on("connected", async () => {
       log.info("Event stream connected, updating lights");
       this.updateLights().catch((error) => log.error("Updating lights after event stream connection failed:", error));
@@ -274,7 +278,7 @@ class PhilipsHue {
     this.updateLights().catch((error) => log.error("Updating lights failed:", error));
   }
 
-  private handleEventStreamUpdate(event: HueEvent) {
+  private async handleEventStreamUpdate(event: HueEvent) {
     for (const data of event.data) {
       if (["light", "grouped_light"].includes(data.type)) {
         let entityId: string;
@@ -294,6 +298,7 @@ class PhilipsHue {
           log.error("Syncing lights failed for event stream update:", error)
         );
 
+        // grouped_light can't be updated, they are a compound of multiple devices and belong to a room/zone
         if (data.type === "light") {
           const groupIds = this.lightIdToGroupIds.get(data.id);
           if (groupIds) {
@@ -304,9 +309,72 @@ class PhilipsHue {
               );
             }
           }
+
+          // a light can only be updated with its name
+          if (data.metadata && typeof data.metadata === "object" && "name" in data.metadata) {
+            const lightConfig = this.config.getLight(data.id);
+            if (!lightConfig) {
+              log.debug("No config found for light %s, skipping config update", data.id);
+              continue;
+            }
+            this.config.updateLight(data.id, {
+              name: data.metadata.name as string,
+              features: lightConfig.features,
+              gamut_type: lightConfig.gamut_type,
+              mirek_schema: lightConfig.mirek_schema
+            });
+          }
+        }
+      } else if (["room", "zone"].includes(data.type)) {
+        const group = this.config.getLight(data.id) as GroupConfig;
+        if (group) {
+          // update the whole group resource if something has changed in it since it is made up of multiple resources
+          const updateGroupData = await this.hueApi.groupResource.getGroupResource(data.id, group.groupType);
+          this.config.updateLight(data.id, {
+            name: updateGroupData.metadata.name,
+            features: getGroupFeatures(updateGroupData),
+            groupType: updateGroupData.type === "zone" ? "zone" : "room",
+            groupedLightIds: updateGroupData.grouped_lights.map((gl) => gl.id),
+            childLightIds: updateGroupData.lights.map((light) => light.id),
+            gamut_type: getMostCommonGamut(updateGroupData),
+            mirek_schema: getMinMaxMirek(updateGroupData)
+          });
+          this.syncGroupState(data.id, updateGroupData).catch((error) =>
+            log.error("Syncing group state failed for event stream update:", error)
+          );
         }
       }
     }
+  }
+
+  private async handleEventStreamAdd(event: HueEvent) {
+    for (const data of event.data) {
+      switch (data.type) {
+        case "light": {
+          const light = await this.hueApi.lightResource.getLight(data.id);
+          addAvailableLights([light], this.config);
+          break;
+        }
+        case "room":
+        case "zone":
+          {
+            const group = await this.hueApi.groupResource.getGroupResource(data.id, data.type);
+            addAvailableGroups([group], data.type, this.config);
+          }
+          break;
+      }
+    }
+  }
+
+  private handleEventStreamDelete(event: HueEvent) {
+    const configured = this.uc.getConfiguredEntities();
+    for (const data of event.data) {
+      configured.updateEntityAttributes(data.id, {
+        [LightAttributes.State]: LightStates.Unavailable
+      });
+      this.config.removeLight(data.id);
+    }
+    this.updateEntityIndexes();
   }
 
   private async handleSubscribeEntities(ids: string[]) {
