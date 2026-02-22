@@ -358,7 +358,7 @@ class PhilipsHueSetup {
 
           if (this.cfgAddDevice && this.config.getHubConfig()?.bridgeId === hubConfig.bridgeid) {
             // Prepared for multiple hubs: should not happen since only one Hub is supported at the moment.
-            log.info("Hub already configured, skipping manuel device %s", hubConfig.bridgeid);
+            log.info("Hub already configured, skipping manual device %s", hubConfig.bridgeid);
           } else {
             const hub: HueHub = {
               id: hubConfig.bridgeid,
