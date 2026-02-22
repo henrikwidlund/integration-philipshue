@@ -72,7 +72,13 @@ class HueApi implements ResourceApi {
   }
 
   setAuthKey(authKey: string) {
-    this.axiosInstance.defaults.headers.common["hue-application-key"] = authKey;
+    if (authKey.length === 0) {
+      if (this.axiosInstance.defaults.headers.common["hue-application-key"]) {
+        delete this.axiosInstance.defaults.headers.common["hue-application-key"];
+      }
+    } else {
+      this.axiosInstance.defaults.headers.common["hue-application-key"] = authKey;
+    }
   }
 
   private handleError(error: unknown, method: string, endpoint: string): never {
