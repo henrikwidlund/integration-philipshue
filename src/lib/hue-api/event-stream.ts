@@ -70,7 +70,9 @@ class HueEventStream extends EventEmitter {
     };
 
     this.es.onerror = (err) => {
-      log.warn("Philips Hue event stream error %s: %s", err.code ? err.code : "", err.message);
+      const code = err?.code ?? "";
+      const message = err?.message ?? String(err);
+      log.warn("Philips Hue event stream error %s: %s", code, message);
       this.connected = false;
       this.emit("disconnected");
     };
