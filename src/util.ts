@@ -178,15 +178,15 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
   const S = (V - minRGB) / V;
 
   let H = 0;
-  if (V == minRGB) {
+  if (V === minRGB) {
     H = 0;
-  } else if (V == R && G >= B) {
+  } else if (V === R && G >= B) {
     H = 60 * ((G - B) / (V - minRGB));
-  } else if (V == R && G < B) {
+  } else if (V === R && G < B) {
     H = 60 * ((G - B) / (V - minRGB)) + 360;
-  } else if (V == G) {
+  } else if (V === G) {
     H = 60 * ((B - R) / (V - minRGB)) + 120;
-  } else if (V == B) {
+  } else if (V === B) {
     H = 60 * ((R - G) / (V - minRGB)) + 240;
   }
 
