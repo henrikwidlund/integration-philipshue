@@ -48,6 +48,8 @@ class PhilipsHue {
   private groupedLightIdToGroupId: Map<string, string> = new Map();
   private lightIdToGroupIds: Map<string, string[]> = new Map();
   private entityIdToConfig: Map<string, LightOrGroupConfig> = new Map();
+  private publicToV2LightIds: Map<string, string> = new Map();
+  private v2ToPublicLightIds: Map<string, string> = new Map();
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -66,17 +68,35 @@ class PhilipsHue {
       this.hueApi.setBaseUrl(getHubUrl(hubConfig.ip));
       this.hueApi.setAuthKey(hubConfig.username);
     }
-    this.readEntitiesFromConfig();
     this.updateEntityIndexes();
+    await this.readEntitiesFromConfig();
     this.setupDriverEvents();
     this.setupEventStreamEvents();
     log.info("Philips Hue driver initialized");
   }
 
-  private readEntitiesFromConfig() {
+  private async readEntitiesFromConfig() {
+    if (this.config.needsMigration()) {
+      const v2Lights = await this.hueApi.lightResource.getLights();
+      this.config.removeLights();
+      addAvailableLights(v2Lights, this.config);
+
+      const roomData = await this.hueApi.groupResource.getGroupResources("room");
+      if (roomData.length > 0) {
+        addAvailableGroups(roomData, "room", this.config);
+      }
+
+      const zoneData = await this.hueApi.groupResource.getGroupResources("zone");
+      if (zoneData.length > 0) {
+        addAvailableGroups(zoneData, "zone", this.config);
+      }
+
+      this.config.markMigrated(false);
+      this.updateEntityIndexes();
+    }
     const lights = this.config.getLights();
     for (const light of lights) {
-      const lightEntity = new Light(light.id, light.name, { features: light.features });
+      const lightEntity = new Light(this.getPublicEntityId(light.id), light.name, { features: light.features });
       this.addAvailableLight(lightEntity);
     }
   }
@@ -85,6 +105,9 @@ class PhilipsHue {
     this.groupedLightIdToGroupId.clear();
     this.lightIdToGroupIds.clear();
     this.entityIdToConfig.clear();
+    this.publicToV2LightIds.clear();
+    this.v2ToPublicLightIds.clear();
+    const useV1LightIds = this.config.useV1LightIds();
     const entities = this.config.getLights();
     for (const entity of entities) {
       this.entityIdToConfig.set(entity.id, entity);
@@ -96,6 +119,15 @@ class PhilipsHue {
         entity.childLightIds.forEach((lightId) => {
           this.lightIdToGroupIds.set(lightId, [...(this.lightIdToGroupIds.get(lightId) ?? []), entity.id]);
         });
+      } else {
+        if (useV1LightIds && entity.id_v1) {
+          this.entityIdToConfig.set(entity.id_v1, entity);
+          this.publicToV2LightIds.set(entity.id_v1, entity.id);
+          this.v2ToPublicLightIds.set(entity.id, entity.id_v1);
+        } else {
+          this.publicToV2LightIds.set(entity.id, entity.id);
+          this.v2ToPublicLightIds.set(entity.id, entity.id);
+        }
       }
     }
   }
@@ -154,7 +186,9 @@ class PhilipsHue {
   // light-added and light-updated are the same
   private handleConfigEvent(event: ConfigEvent) {
     if (event.type === "light-added") {
-      const light = new Light(event.data.id, event.data.name, { features: event.data.features });
+      const light = new Light(this.getPublicEntityId(event.data.id), event.data.name, {
+        features: event.data.features
+      });
       this.addAvailableLight(light);
     }
     this.updateEntityIndexes();
@@ -162,7 +196,7 @@ class PhilipsHue {
 
   private addAvailableLight(light: Light) {
     light.setCmdHandler((entity, command, params) => {
-      const latestConfig = this.entityIdToConfig.get(entity.id);
+      const latestConfig = this.entityIdToConfig.get(this.getV2EntityId(entity.id));
       if (!latestConfig) {
         log.error("No config found for entity: %s", entity.id);
         return Promise.resolve(StatusCodes.ServerError);
@@ -213,11 +247,12 @@ class PhilipsHue {
     isGroup: boolean,
     params?: { [key: string]: string | number | boolean }
   ): Promise<StatusCodes> {
+    const v2EntityId = this.getV2EntityId(entityId);
     try {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, !isGroup);
+          await this.hueApi.lightResource.setOn(v2EntityId, currentState !== LightStates.On, !isGroup);
           break;
         }
         case LightCommands.On: {
@@ -227,7 +262,7 @@ class PhilipsHue {
             params?.hue === undefined
           ) {
             // if no parameters are provided, simply turn on the light
-            await this.hueApi.lightResource.setOn(entityId, true, !isGroup);
+            await this.hueApi.lightResource.setOn(v2EntityId, true, !isGroup);
             break;
           }
 
@@ -248,11 +283,11 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
           }
-          await this.hueApi.lightResource.updateLightState(entityId, req, !isGroup);
+          await this.hueApi.lightResource.updateLightState(v2EntityId, req, !isGroup);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entityId, false, !isGroup);
+          await this.hueApi.lightResource.setOn(v2EntityId, false, !isGroup);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
@@ -318,6 +353,7 @@ class PhilipsHue {
               continue;
             }
             this.config.updateLight(data.id, {
+              id_v1: data.id_v1,
               name: data.metadata.name as string,
               features: lightConfig.features,
               gamut_type: lightConfig.gamut_type,
@@ -369,7 +405,8 @@ class PhilipsHue {
   private handleEventStreamDelete(event: HueEvent) {
     const configured = this.uc.getConfiguredEntities();
     for (const data of event.data) {
-      configured.updateEntityAttributes(data.id, {
+      const publicEntityId = this.getPublicEntityId(data.id);
+      configured.updateEntityAttributes(publicEntityId, {
         [LightAttributes.State]: LightStates.Unavailable
       });
       this.config.removeLight(data.id);
@@ -429,21 +466,22 @@ class PhilipsHue {
   }
 
   private async updateLight(entityId: string): Promise<boolean> {
+    const v2EntityId = this.getV2EntityId(entityId);
     try {
-      const config = this.entityIdToConfig.get(entityId);
+      const config = this.entityIdToConfig.get(v2EntityId);
       if (!config) {
-        log.warn("No config found for entity %s; skipping update", entityId);
+        log.warn("No config found for entity %s; skipping update", v2EntityId);
         return false;
       }
       const isGroup = this.isGroupConfig(config);
       if (isGroup) {
-        const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);
+        const groupResource = await this.hueApi.groupResource.getGroupResource(v2EntityId, config.groupType);
         if (!["room", "zone"].includes(groupResource.type)) {
-          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, entityId);
+          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, v2EntityId);
           return false;
         }
         const groupFeatures = getGroupFeatures(groupResource);
-        this.config.updateLight(entityId, {
+        this.config.updateLight(v2EntityId, {
           name: groupResource.metadata.name,
           features: groupFeatures,
           groupedLightIds: groupResource.grouped_lights.map((gl) => gl.id),
@@ -452,17 +490,18 @@ class PhilipsHue {
           gamut_type: getMostCommonGamut(groupResource),
           mirek_schema: getMinMaxMirek(groupResource)
         });
-        await this.syncGroupState(entityId, groupResource);
+        await this.syncGroupState(v2EntityId, groupResource);
       } else {
-        const light = await this.hueApi.lightResource.getLight(entityId);
+        const light = await this.hueApi.lightResource.getLight(v2EntityId);
         const lightFeatures = getLightFeatures(light);
-        this.config.updateLight(entityId, {
+        this.config.updateLight(v2EntityId, {
+          id_v1: light.id_v1,
           name: light.metadata.name,
           features: lightFeatures,
           gamut_type: light.color?.gamut_type,
           mirek_schema: light.color_temperature?.mirek_schema
         });
-        await this.syncLightState(entityId, light);
+        await this.syncLightState(v2EntityId, light);
       }
 
       return true;
@@ -489,7 +528,7 @@ class PhilipsHue {
       //       But this might be rather slow, especially if the stream is still connected if an error occurs here!
       // Only set entity to Unavailable for missing or invalid authentication key errors.
       const state = statusCode === 401 || statusCode === 403 ? LightStates.Unavailable : LightStates.Unknown;
-      this.uc.getConfiguredEntities().updateEntityAttributes(entityId, {
+      this.uc.getConfiguredEntities().updateEntityAttributes(this.getPublicEntityId(entityId), {
         [LightAttributes.State]: state
       });
 
@@ -498,9 +537,10 @@ class PhilipsHue {
   }
 
   private async syncLightState(entityId: string, light: Partial<LightResource>) {
-    const entity = this.uc.getConfiguredEntities().getEntity(entityId);
+    const publicEntityId = this.getPublicEntityId(entityId);
+    const entity = this.uc.getConfiguredEntities().getEntity(publicEntityId);
     if (!entity) {
-      log.debug("entity is not configured, skipping sync", entityId);
+      log.debug("entity is not configured, skipping sync", publicEntityId);
       return;
     }
     const lightState: Record<string, string | number> = {};
@@ -519,7 +559,7 @@ class PhilipsHue {
       lightState[LightAttributes.Hue] = hue;
       lightState[LightAttributes.Saturation] = sat;
     }
-    this.uc.getConfiguredEntities().updateEntityAttributes(entityId, lightState);
+    this.uc.getConfiguredEntities().updateEntityAttributes(publicEntityId, lightState);
   }
 
   private async syncGroupState(entityId: string, group: CombinedGroupResource) {
@@ -575,6 +615,14 @@ class PhilipsHue {
         });
       }
     }
+  }
+
+  private getPublicEntityId(entityId: string): string {
+    return this.v2ToPublicLightIds.get(entityId) ?? entityId;
+  }
+
+  private getV2EntityId(entityId: string): string {
+    return this.publicToV2LightIds.get(entityId) ?? entityId;
   }
 }
 

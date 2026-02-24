@@ -256,6 +256,7 @@ export interface HueEvent {
   type: "update" | "add" | "delete" | "error";
   data: {
     id: string;
+    id_v1?: string;
     type: string;
     [key: string]: unknown;
   }[];
@@ -378,7 +379,6 @@ export interface GroupResourceResponse {
 
 export interface CombinedGroupResource {
   id: string;
-  id_v1?: string;
   lights: LightResource[];
   grouped_lights: GroupedLightResource[];
   type: ResourceType;

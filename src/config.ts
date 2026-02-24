@@ -16,12 +16,13 @@ import { isDeepEqual } from "./util.js";
 const CFG_FILENAME = "philips_hue_config.json";
 
 export interface LightConfig {
+  id_v1?: string;
   name: string;
   features: LightFeatures[];
   gamut_type?: GamutType;
   mirek_schema?: { mirek_minimum: number; mirek_maximum: number };
 }
-export interface GroupConfig extends LightConfig {
+export interface GroupConfig extends Omit<LightConfig, "id_v1"> {
   groupType: GroupType;
   groupedLightIds: string[];
   childLightIds: string[];
@@ -31,6 +32,8 @@ export type LightOrGroupConfig = LightConfig | GroupConfig;
 interface PhilipsHueConfig {
   hub?: { name: string; ip: string; username: string; bridgeId: string };
   lights: { [key: string]: LightOrGroupConfig };
+  use_v2_light_ids?: boolean;
+  needsMigration?: boolean;
 }
 
 export type ConfigEvent =
@@ -75,6 +78,20 @@ class Config extends EventEmitter {
     }
   }
 
+  public needsMigration(): boolean {
+    return this.config.needsMigration !== false;
+  }
+
+  public markMigrated(use_v2_light_ids: boolean) {
+    this.config.use_v2_light_ids = use_v2_light_ids;
+    this.config.needsMigration = false;
+    this.saveToFile();
+  }
+
+  public useV1LightIds() {
+    return this.config.use_v2_light_ids !== true;
+  }
+
   public addLight(id: string, light: LightOrGroupConfig) {
     this.config.lights[id] = light;
     this.saveToFile();
@@ -97,6 +114,11 @@ class Config extends EventEmitter {
 
   public removeLight(id: string) {
     delete this.config.lights[id];
+    this.saveToFile();
+  }
+
+  public removeLights() {
+    this.config.lights = {};
     this.saveToFile();
   }
 

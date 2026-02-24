@@ -10,7 +10,7 @@ import fs from "fs";
 import { CombinedGroupResource, GamutType, GroupType, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
-import Config from "./config.js";
+import Config, { GroupConfig, LightConfig } from "./config.js";
 
 export function convertImageToBase64(file: string) {
   let data;
@@ -35,11 +35,12 @@ export function addAvailableLights(lights: LightResource[], config: Config) {
     }
     const features = getLightFeatures(light);
     config.addLight(light.id, {
+      id_v1: light.id_v1,
       name: light.metadata.name,
       features,
       gamut_type: light.color?.gamut_type,
       mirek_schema: light.color_temperature?.mirek_schema
-    });
+    } as LightConfig);
   });
 }
 
@@ -58,7 +59,7 @@ export function addAvailableGroups(groups: CombinedGroupResource[], groupType: G
       groupType,
       gamut_type: getMostCommonGamut(group),
       mirek_schema: getMinMaxMirek(group)
-    });
+    } as GroupConfig);
   });
 }
 

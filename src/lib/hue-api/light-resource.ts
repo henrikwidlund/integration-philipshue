@@ -24,7 +24,7 @@ class LightResource {
 
   async getLights(): Promise<LightResourceData[]> {
     const res = await this.api.sendRequest<LightResourceResult>("GET", "/clip/v2/resource/light");
-    return res.data;
+    return res.data.map((light) => this.getWithCleanedV1Id(light));
   }
 
   async getLight(id: string): Promise<LightResourceData> {
@@ -32,7 +32,18 @@ class LightResource {
     if (!res.data || res.data.length === 0) {
       throw new HueError("Light not found", StatusCodes.NotFound);
     }
-    return res.data[0];
+    return this.getWithCleanedV1Id(res.data[0]);
+  }
+
+  private getWithCleanedV1Id(light: LightResourceData) {
+    if (!light.id_v1) return light;
+
+    const parts = light.id_v1.split("/");
+    const cleanedIdV1 = parts[parts.length - 1];
+    return {
+      ...light,
+      id_v1: cleanedIdV1
+    };
   }
 
   async setOn(id: string, on: boolean, singleLight: boolean): Promise<LightResourceResponse["data"]> {
