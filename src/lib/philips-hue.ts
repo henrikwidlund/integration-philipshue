@@ -277,11 +277,17 @@ class PhilipsHue {
             }
           }
           if (params?.color_temperature !== undefined) {
-            // TODO consider lamp specific min / max mirek values
-            req.color_temperature = { mirek: colorTempToMirek(Number(params.color_temperature)) };
+            const config = this.config.getLight(entityId);
+            const minMirek = config?.mirek_schema?.mirek_minimum;
+            const maxMirek = config?.mirek_schema?.mirek_maximum;
+            req.color_temperature = {
+              mirek: colorTempToMirek(Number(params.color_temperature), minMirek, maxMirek)
+            };
           }
           if (params?.hue !== undefined && params?.saturation !== undefined) {
-            req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), 1) };
+            const currentB = Number(entity.attributes?.[LightAttributes.Brightness]);
+            const v = Number.isFinite(currentB) ? Math.max(0, Math.min(currentB, 255)) / 255 : 1;
+            req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), v) };
           }
           await this.hueApi.lightResource.updateLightState(v2EntityId, req, !isGroup);
           break;
@@ -551,7 +557,14 @@ class PhilipsHue {
       lightState[LightAttributes.Brightness] = percentToBrightness(light.dimming.brightness);
     }
     if (light.color_temperature && light.color_temperature.mirek_valid) {
-      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(light.color_temperature.mirek);
+      const config = this.config.getLight(entityId);
+      const minMirek = config?.mirek_schema?.mirek_minimum;
+      const maxMirek = config?.mirek_schema?.mirek_maximum;
+      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+        light.color_temperature.mirek,
+        minMirek,
+        maxMirek
+      );
     }
 
     if (light.color && light.color.xy) {
@@ -587,7 +600,14 @@ class PhilipsHue {
       groupedLights?.find((groupLight) => groupLight.color_temperature?.mirek_valid) ??
       group.lights?.find((light) => light.color_temperature?.mirek_valid);
     if (colorTemp?.color_temperature) {
-      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(colorTemp.color_temperature.mirek);
+      const config = this.config.getLight(entityId);
+      const minMirek = config?.mirek_schema?.mirek_minimum;
+      const maxMirek = config?.mirek_schema?.mirek_maximum;
+      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+        colorTemp.color_temperature.mirek,
+        minMirek,
+        maxMirek
+      );
     }
 
     const color =
