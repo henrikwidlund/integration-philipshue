@@ -66,7 +66,7 @@ class HueApi implements ResourceApi {
     });
   }
 
-  setBaseUrl(hubUrl: string) {
+  setBaseUrl(hubUrl?: string) {
     this.hubUrl = hubUrl;
     this.axiosInstance.defaults.baseURL = hubUrl;
   }

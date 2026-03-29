@@ -301,7 +301,7 @@ class PhilipsHueSetup {
           username: authKey.username,
           bridgeId: this.selectedHub.id
         });
-        this.config.markMigrated(true);
+        this.config.markMigrated();
         const lightData = await api.lightResource.getLights();
         addAvailableLights(lightData, this.config);
 
