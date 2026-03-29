@@ -14,7 +14,7 @@ import { GamutType, GroupType } from "./lib/hue-api/types.js";
 import { isDeepEqual } from "./util.js";
 
 const CFG_VERSION = 2;
-const OLD_CFG_FILENAME = "config.json";
+const V1_CFG_FILENAME = "config.json";
 const CFG_FILENAME = "philips_hue_config.json";
 
 export interface LightConfig {
@@ -188,7 +188,7 @@ class Config extends EventEmitter {
   }
 
   private migrateV1ConfigurationFiles(): boolean {
-    const configPath = path.join(this.configDir, OLD_CFG_FILENAME);
+    const configPath = path.join(this.configDir, V1_CFG_FILENAME);
 
     if (!fs.existsSync(configPath)) {
       return false;
