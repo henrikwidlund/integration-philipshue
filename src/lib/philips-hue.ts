@@ -353,11 +353,14 @@ class PhilipsHue {
           }
           if (params?.color_temperature !== undefined) {
             const config = this.config.getLight(entityId);
-            const minMirek = config?.mirek_schema?.mirek_minimum;
-            const maxMirek = config?.mirek_schema?.mirek_maximum;
-            req.color_temperature = {
-              mirek: colorTempToMirek(Number(params.color_temperature), minMirek, maxMirek)
-            };
+            const mirek = this.getMirek(entityId, config);
+            const minMirek = mirek?.minMirek;
+            const maxMirek = mirek?.maxMirek;
+            if (minMirek && maxMirek) {
+              req.color_temperature = {
+                mirek: colorTempToMirek(Number(params.color_temperature), minMirek, maxMirek)
+              };
+            }
           }
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             const currentB = Number(entity.attributes?.[LightAttributes.Brightness]);
@@ -384,6 +387,23 @@ class PhilipsHue {
       }
       log.error("handleLightCmd error", error);
       return StatusCodes.ServerError;
+    }
+  }
+
+  private getMirek(entityId: string, config?: LightOrGroupConfig) {
+    const minMirek = config?.mirek_schema?.mirek_minimum;
+    const maxMirek = config?.mirek_schema?.mirek_maximum;
+    if (minMirek && maxMirek) {
+      return { minMirek, maxMirek };
+    }
+
+    const groupId = this.groupedLightIdToGroupId.get(entityId);
+    if (groupId) {
+      const groupLight = this.config.getLight(groupId!);
+      return {
+        minMirek: groupLight?.mirek_schema?.mirek_minimum,
+        maxMirek: groupLight?.mirek_schema?.mirek_maximum
+      };
     }
   }
 
@@ -687,13 +707,16 @@ class PhilipsHue {
     }
     if (light.color_temperature && light.color_temperature.mirek_valid) {
       const config = this.config.getLight(v2Id);
-      const minMirek = config?.mirek_schema?.mirek_minimum;
-      const maxMirek = config?.mirek_schema?.mirek_maximum;
-      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(
-        light.color_temperature.mirek,
-        minMirek,
-        maxMirek
-      );
+      const mirek = this.getMirek(v2Id, config);
+      const minMirek = mirek?.minMirek;
+      const maxMirek = mirek?.maxMirek;
+      if (minMirek && maxMirek) {
+        lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+          light.color_temperature.mirek,
+          minMirek,
+          maxMirek
+        );
+      }
     }
 
     if (light.color && light.color.xy) {
@@ -719,7 +742,7 @@ class PhilipsHue {
     }
     const groupState: Record<string, string | number> = {};
     const groupedLights = group.grouped_lights;
-    const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
+    const anyOn = groupedLights.some((groupLight) => groupLight.on?.on);
     const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
     if (anyOn) {
       groupState[LightAttributes.State] = LightStates.On;
@@ -737,13 +760,16 @@ class PhilipsHue {
       group.lights?.find((light) => light.color_temperature?.mirek_valid);
     if (colorTemp?.color_temperature) {
       const config = this.config.getLight(entityId);
-      const minMirek = config?.mirek_schema?.mirek_minimum;
-      const maxMirek = config?.mirek_schema?.mirek_maximum;
-      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(
-        colorTemp.color_temperature.mirek,
-        minMirek,
-        maxMirek
-      );
+      const mirek = this.getMirek(entityId, config);
+      const minMirek = mirek?.minMirek;
+      const maxMirek = mirek?.maxMirek;
+      if (minMirek && maxMirek) {
+        groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+          colorTemp.color_temperature.mirek,
+          minMirek,
+          maxMirek
+        );
+      }
     }
 
     const color =

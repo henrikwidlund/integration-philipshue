@@ -261,7 +261,7 @@ export function isValidHttpUrl(url: string): boolean {
   }
 }
 
-export function mirekToColorTemp(colorTemp: number, minMirek = 153, maxMirek = 500) {
+export function mirekToColorTemp(colorTemp: number, minMirek: number, maxMirek: number) {
   if (isNaN(colorTemp) || colorTemp <= minMirek) {
     return 0;
   }
@@ -272,7 +272,7 @@ export function mirekToColorTemp(colorTemp: number, minMirek = 153, maxMirek = 5
   return ((colorTemp - minMirek) / range) * 100;
 }
 
-export function colorTempToMirek(colorTemp: number, minMirek = 153, maxMirek = 500) {
+export function colorTempToMirek(colorTemp: number, minMirek: number, maxMirek: number) {
   if (isNaN(colorTemp) || colorTemp <= 0) {
     return minMirek;
   }
