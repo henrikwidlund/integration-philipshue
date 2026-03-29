@@ -91,6 +91,10 @@ class PhilipsHue {
   /**
    * Migrate an old v1 configuration to v2 by fetching all light, room, and zone resources from the hub.
    *
+   * The configuration is marked as `migrated` after successful migration. In case of Hub authentication errors,
+   * the configuration is cleared and the user has to run setup again.
+   *
+   * @param max_retries - Maximum number of retries for API calls during migration (default: MIGRATION_MAX_RETRIES)
    */
   private async migrateConfig(max_retries: number = MIGRATION_MAX_RETRIES) {
     if (this.migrating || !this.config.needsMigration()) {
@@ -260,15 +264,21 @@ class PhilipsHue {
   }
 
   private addAvailableLight(light: Light) {
-    light.setCmdHandler((entity, command, params) => {
-      const latestConfig = this.entityIdToConfig.get(this.getV2EntityId(entity.id));
-      if (!latestConfig) {
-        log.error("No config found for entity: %s", entity.id);
-        return Promise.resolve(StatusCodes.ServerError);
-      }
-      return this.handleLightCmd(entity, latestConfig, command, params);
-    });
+    light.setCmdHandler(this.onEntityCommand.bind(this));
     this.uc.addAvailableEntity(light);
+  }
+
+  private async onEntityCommand(
+    entity: Entity,
+    command: string,
+    params?: { [key: string]: string | number | boolean }
+  ): Promise<StatusCodes> {
+    const latestConfig = this.entityIdToConfig.get(this.getV2EntityId(entity.id));
+    if (!latestConfig) {
+      log.error("No config found for entity: %s", entity.id);
+      return StatusCodes.NotFound;
+    }
+    return this.handleLightCmd(entity, latestConfig, command, params);
   }
 
   private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
@@ -285,7 +295,7 @@ class PhilipsHue {
     const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
     if (!entityIds || entityIds.length === 0) {
       log.error("handleLightCmd, missing groupedLightIds for group entity: %s", entity.id);
-      return StatusCodes.ServerError;
+      return StatusCodes.NotFound;
     }
 
     const results = new Set(
@@ -491,24 +501,17 @@ class PhilipsHue {
     const configured = this.uc.getConfiguredEntities();
 
     for (const id of ids) {
+      // Support legacy entity configurations in the Remote using the old v1 light identifier
       if (this.v1LightIds.has(id) && !configured.contains(id)) {
         const entity = this.uc.getAvailableEntities().getEntity(this.getV2EntityId(id));
         if (entity) {
-          // Support legacy entity configurations in the Remote using the old v1 light identifier:
           // clone v2 entity using the v1 identifier
           const v1Entity = new Light(id, entity.name, {
             features: entity.features as LightFeatures[],
             attributes: entity.attributes,
             options: entity.options
           });
-          v1Entity.setCmdHandler((entity, command, params) => {
-            const latestConfig = this.entityIdToConfig.get(this.getV2EntityId(entity.id));
-            if (!latestConfig) {
-              log.error("No config found for entity: %s", entity.id);
-              return Promise.resolve(StatusCodes.ServerError);
-            }
-            return this.handleLightCmd(entity, latestConfig, command, params);
-          });
+          v1Entity.setCmdHandler(this.onEntityCommand.bind(this));
 
           configured.addAvailableEntity(v1Entity);
         }
