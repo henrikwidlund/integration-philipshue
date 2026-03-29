@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
+### Breaking Changes
+- Using Philips Hue v2 API. V1 Hue hubs are no longer supported ([#19](https://github.com/unfoldedcircle/integration-philipshue/pull/19)).
+- Light-entity identifier changed to Hue v2 API format ([#79](https://github.com/unfoldedcircle/integration-philipshue/pull/79)). 
+  - Already configured lights using the old v1 identifiers are still working. It is recommended to reconfigure the lights to use the new format.  
+- New configuration file format to support lights, groups, rooms, and different gamut types ([#79](https://github.com/unfoldedcircle/integration-philipshue/pull/79)).
+  - The old hub configuration file is automatically migrated if a connection to the Hue hub can be established.
+
 ### Added
 
 - Manual Hue hub setup option ([#39](https://github.com/unfoldedcircle/integration-philipshue/pull/39)).
@@ -17,7 +24,6 @@ _Changes in the next release_
 
 ### Changed
 
-- **BREAKING CHANGE** Using Philips Hue v2 API. V1 Hue hubs are no longer supported ([#19](https://github.com/unfoldedcircle/integration-philipshue/pull/19)).
 - Open Source release ([#20](https://github.com/unfoldedcircle/integration-philipshue/issues/20)).
 - Node.js v22.13 and package updates ([#31](https://github.com/unfoldedcircle/integration-philipshue/pull/31)).
 - Logging prefixes ([#40](https://github.com/unfoldedcircle/integration-philipshue/pull/40)).
