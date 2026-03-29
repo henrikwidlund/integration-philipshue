@@ -1,6 +1,7 @@
 # Philips Hue integration for Remote Two/3
 
-Unfolded Circle Remote integration driver for Philips Hue lights.
+Unfolded Circle Remote integration driver for Philips Hue lights, supporting the Hue v2 API.
+Supported Hue Bridges are the Hue Bridge generation 2 and the Hue Bridge Pro.
 
 This integration driver is included in the Unfolded Circle Remote firmware and does not need to be run as an external
 integration to control Hue lights. A standalone driver can be used for development or custom functionality.
@@ -11,8 +12,20 @@ communicates with JSON messages over WebSocket.
 > [!IMPORTANT]
 > This driver is currently being rewritten using the Hue API v2 with event streaming.
 >
-> - v1 Hue hubs are no longer supported.
-> - Compatibility with the new Hue Bridge Pro has not yet been tested.
+> - The v1 Hue Bridge is no longer supported.
+> - The new Hue Bridge Pro is supported with the v2 API.
+
+## Hue v1 API migration
+
+Integration versions < v0.3.0 used the Hue v1 API. Version 0.3.0 switched to the Hue v2 API.
+This Philips Hue integration using the Hue v1 API was included in the Remote Two/3 firmware versions up to v2.9.0.
+
+- The old configuration file is automatically migrated if a connection to the Hue Bridge can be established.
+  - No bridge re-authentication is required unless the authentication fails.
+- Already configured lights using the old v1 identifiers are still working (short numeric identifiers).
+  - New lights will be created with the v2 identifiers (UUID identifiers).
+  - It is recommended to reconfigure the lights to use the new format by removing them from the configured entities in
+    the web-configurator. However, all UI-widgets and button mappings have to be re-created.
 
 ## Standalone usage
 
