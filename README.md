@@ -1,31 +1,33 @@
 # Philips Hue integration for Remote Two/3
 
-Unfolded Circle Remote integration driver for Philips Hue lights, supporting the Hue v2 API.
-Supported Hue Bridges are the Hue Bridge generation 2 and the Hue Bridge Pro.
+Unfolded Circle Remote integration driver for Philips Hue lights, supporting the Hue API v2.  
+Supported bridges: Hue Bridge (Gen 2) and Hue Bridge Pro.
 
-This integration driver is included in the Unfolded Circle Remote firmware and does not need to be run as an external
-integration to control Hue lights. A standalone driver can be used for development or custom functionality.
+This integration is bundled with the Unfolded Circle Remote firmware and does not need to run as an external service for
+normal usage. A standalone mode is available for development or custom integrations.
 
-The integration implements the UC Remote [Integration-API](https://github.com/unfoldedcircle/core-api) which
-communicates with JSON messages over WebSocket.
+The integration implements the UC Remote [Integration API](https://github.com/unfoldedcircle/core-api), communicating
+via JSON messages over WebSocket.
 
 > [!IMPORTANT]
-> This driver is currently being rewritten using the Hue API v2 with event streaming.
+> This driver is currently being rewritten to fully leverage the Hue API v2 with event streaming.
 >
-> - The v1 Hue Bridge is no longer supported.
-> - The new Hue Bridge Pro is supported with the v2 API.
+> - Hue Bridge v1 is no longer supported.
+> - Hue Bridge Pro is supported via the v2 API.
 
 ## Hue v1 API migration
 
-Integration versions < v0.3.0 used the Hue v1 API. Version 0.3.0 switched to the Hue v2 API.
-This Philips Hue integration using the Hue v1 API was included in the Remote Two/3 firmware versions up to v2.9.0.
+Integration versions < v0.3.0 used the Hue v1 API. Starting with v0.3.0, the integration uses the Hue v2 API.  
+The v1-based integration was included in Remote Two/3 firmware up to version v2.9.0.
 
-- The old configuration file is automatically migrated if a connection to the Hue Bridge can be established.
-  - No bridge re-authentication is required unless the authentication fails.
-- Already configured lights using the old v1 identifiers are still working (short numeric identifiers).
-  - New lights will be created with the v2 identifiers (UUID identifiers).
-  - It is recommended to reconfigure the lights to use the new format by removing them from the configured entities in
-    the web-configurator. However, all UI-widgets and button mappings have to be re-created.
+- Existing configurations are automatically migrated if a connection to the Hue Bridge can be established.
+  - On startup, the driver attempts to connect to the Hue Bridge for up to one minute to start the migration.
+  - If migration cannot start during startup, it will retry later when the Remote connects to the integration.
+  - Re-authentication is not required unless authentication fails.
+- Previously configured lights using v1 identifiers (short numeric IDs) will continue to work.
+  - Newly discovered lights will use v2 identifiers (UUIDs).
+  - It is recommended to migrate to v2 identifiers by removing and re-adding lights in the web configurator.  
+    Note: this requires recreating associated UI widgets and button mappings.
 
 ## Standalone usage
 
@@ -33,12 +35,15 @@ This Philips Hue integration using the Hue v1 API was included in the Remote Two
 
 Requirements:
 
-- Remote Two/3 firmware 1.9.3 or newer with support for custom integrations.
-- Install [nvm](https://github.com/nvm-sh/nvm) (Node.js version manager) for local development.
-- Node.js v22.13 or newer (older versions are not tested).
-- Install required libraries:
+- Remote Two/3 firmware v1.9.3 or newer (with custom integration support)
+- [nvm](https://github.com/nvm-sh/nvm) for managing Node.js versions (recommended)
+- Node.js v22.13 or newer (older versions are untested)
 
-`npm install`
+Install dependencies:
+
+```shell
+npm install
+```
 
 ### Run
 
@@ -54,37 +59,36 @@ Run as an external integration driver:
 UC_CONFIG_HOME=. UC_INTEGRATION_HTTP_PORT=8097 npm run start
 ```
 
-The configuration files are loaded and saved from the path specified in the environment variable `UC_CONFIG_HOME`.
+Configuration files are read from and written to the path specified by `UC_CONFIG_HOME`.
 
 ### Logging
 
-Logging any kind of output is directed to the [debug](https://www.npmjs.com/package/debug) module.
-To let the integration driver output anything, run the driver with the `DEBUG` environment variable set like:
+Logging is handled via the [`debug`](https://www.npmjs.com/package/debug) module.
+
+To enable logging, set the `DEBUG` environment variable:
 
 ```shell
 DEBUG=uc_hue:* npm run start
 ```
 
-The driver exposes the following log-levels:
+Available log namespaces:
 
-Log namespaces:
+- `uc_hue:msg` – Philips Hue API messages
+- `uc_hue:debug` – Debug-level logs
+- `uc_hue:info` – Informational messages
+- `uc_hue:warn` – Warnings
+- `uc_hue:error` – Errors
 
-- `uc_hue:msg`: Philips Hue API messages
-- `uc_hue:debug`: debugging messages
-- `uc_hue:info`: informational messages
-- `uc_hue:warn`: warnings
-- `uc_hue:error`: errors
-
-If you only want to get errors and warnings reported:
+To show only warnings and errors:
 
 ```shell
 DEBUG=uc_hue:warn,uc_hue:error npm run start
 ```
 
-The [Unfolded Circle Integration-API library](https://github.com/unfoldedcircle/integration-node-library) is also using
-the `debug` module for logging:
+The [Unfolded Circle Integration API library](https://github.com/unfoldedcircle/integration-node-library) also uses the
+`debug` module:
 
-- Enable WebSocket message trace: `ucapi:msg`
+- WebSocket message tracing: `ucapi:msg`
 
 ## Versioning
 
