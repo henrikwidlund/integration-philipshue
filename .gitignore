@@ -109,4 +109,9 @@ configured.json
 # JetBrains
 http-client.private.env.json
 
+# old configuration files
+/config.json
+/configured_entities.json
+
+# new configuration file
 /philips_hue_config.json

@@ -66,7 +66,7 @@ class HueApi implements ResourceApi {
     });
   }
 
-  setBaseUrl(hubUrl: string) {
+  setBaseUrl(hubUrl?: string) {
     this.hubUrl = hubUrl;
     this.axiosInstance.defaults.baseURL = hubUrl;
   }
@@ -136,12 +136,7 @@ class HueApi implements ResourceApi {
       throw new HueError("Hub URL is required", StatusCodes.ServiceUnavailable);
     }
 
-    try {
-      const { data } = await this.axiosInstance.get<HubConfig>("/api/config");
-      return data;
-    } catch (error) {
-      this.handleError(error, "GET", `${this.hubUrl}/api/config`);
-    }
+    return await this.sendRequest<HubConfig>("GET", "/api/config", undefined, false);
   }
 
   /**
@@ -155,35 +150,35 @@ class HueApi implements ResourceApi {
     if (!this.hubUrl) {
       throw new HueError("Failed to generate auth key: Hub URL is required", StatusCodes.ServiceUnavailable);
     }
-    try {
-      const { data } = await this.axiosInstance.post<AuthenticateResult[]>("/api", {
+
+    const data = await this.sendRequest<AuthenticateResult[]>(
+      "POST",
+      "/api",
+      {
         devicetype: deviceType,
         generateclientkey: true
-      });
-      if (!data[0]?.success) {
-        /**
-         * Response if button wasn't pressed:
-         * ```json
-         * [
-         *   {
-         *     "error": {
-         *       "type": 101,
-         *       "address": "",
-         *       "description": "link button not pressed"
-         *     }
-         *   }
-         * ]
-         * ```
-         */
-        throw new HueError(`Failed to generate auth key: ${data[0]?.error?.description}`, StatusCodes.BadRequest);
-      }
-      return data[0].success;
-    } catch (error) {
-      if (error instanceof HueError) {
-        throw error;
-      }
-      this.handleError(error, "POST", `${this.hubUrl}/api`);
+      },
+      false
+    );
+
+    if (!data[0]?.success) {
+      /**
+       * Response if button wasn't pressed:
+       * ```json
+       * [
+       *   {
+       *     "error": {
+       *       "type": 101,
+       *       "address": "",
+       *       "description": "link button not pressed"
+       *     }
+       *   }
+       * ]
+       * ```
+       */
+      throw new HueError(`Failed to generate auth key: ${data[0]?.error?.description}`, StatusCodes.BadRequest);
     }
+    return data[0].success;
   }
 
   /**
@@ -244,10 +239,16 @@ class HueApi implements ResourceApi {
 
         return data;
       } catch (error: unknown) {
-        if (axios.isAxiosError(error) && error.response) {
-          statusCode = error.response.status;
-          // Retry on 429 (Rate Limit) or 503 (Service Unavailable)
-          if ((statusCode === 429 || statusCode === 503) && retries < MAX_RETRIES) {
+        if (axios.isAxiosError(error)) {
+          if (error.response) {
+            statusCode = error.response.status;
+            // Retry on 429 (Rate Limit) or 5xx (Server Errors)
+            if ((statusCode === 429 || (statusCode >= 500 && statusCode <= 599)) && retries < MAX_RETRIES) {
+              continue;
+            }
+          } else if (error.request && retries < MAX_RETRIES) {
+            // Network error (no response received)
+            statusCode = 0;
             continue;
           }
         }

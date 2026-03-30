@@ -13,6 +13,7 @@ import {
   Light,
   LightAttributes,
   LightCommands,
+  LightFeatures,
   LightStates,
   StatusCodes
 } from "@unfoldedcircle/integration-api";
@@ -39,6 +40,9 @@ import HueEventStream from "./hue-api/event-stream.js";
 import { CombinedGroupResource, HueEvent, LightResource, LightResourceParams } from "./hue-api/types.js";
 import PhilipsHueSetup from "./setup.js";
 
+const MIGRATION_MAX_RETRIES = 6;
+const MIGRATION_INITIAL_RETRY_DELAY_MS = 1000;
+
 class PhilipsHue {
   private uc: IntegrationAPI;
   private readonly config: Config;
@@ -48,6 +52,12 @@ class PhilipsHue {
   private groupedLightIdToGroupId: Map<string, string> = new Map();
   private lightIdToGroupIds: Map<string, string[]> = new Map();
   private entityIdToConfig: Map<string, LightOrGroupConfig> = new Map();
+  // v1|v2 -> v2 light identifiers to map Remote entity IDs to the v2 light identifier.
+  private publicToV2LightIds: Map<string, string> = new Map();
+  // all available lights with a v1 identifier. Used to detect legacy entity subscriptions from the Remote.
+  private v1LightIds: Set<string> = new Set();
+  // migration guard flag
+  private migrating = false;
 
   constructor() {
     this.uc = new IntegrationAPI();
@@ -60,20 +70,100 @@ class PhilipsHue {
   }
 
   async init() {
-    this.uc.init("driver.json", this.setup.handleSetup.bind(this.setup));
     const hubConfig = this.config.getHubConfig();
     if (hubConfig && hubConfig.ip) {
       this.hueApi.setBaseUrl(getHubUrl(hubConfig.ip));
       this.hueApi.setAuthKey(hubConfig.username);
+
+      if (this.config.needsMigration()) {
+        await this.migrateConfig();
+      }
     }
-    this.readEntitiesFromConfig();
+
+    this.uc.init("driver.json", this.setup.handleSetup.bind(this.setup));
     this.updateEntityIndexes();
+    await this.readEntitiesFromConfig();
     this.setupDriverEvents();
     this.setupEventStreamEvents();
     log.info("Philips Hue driver initialized");
   }
 
-  private readEntitiesFromConfig() {
+  /**
+   * Migrate an old v1 configuration to v2 by fetching all light, room, and zone resources from the hub.
+   *
+   * The configuration is marked as `migrated` after successful migration. In case of Hub authentication errors,
+   * the configuration is cleared and the user has to run setup again.
+   *
+   * @param max_retries - Maximum number of retries for API calls during migration (default: MIGRATION_MAX_RETRIES)
+   */
+  private async migrateConfig(max_retries: number = MIGRATION_MAX_RETRIES) {
+    if (this.migrating || !this.config.needsMigration()) {
+      return;
+    }
+    this.migrating = true;
+    log.info("Migrating v1 config to new format. This requires a connection to the Hub.");
+
+    try {
+      let retries = 0;
+      while (true) {
+        try {
+          const v2Lights = await this.hueApi.lightResource.getLights();
+          this.config.removeLights();
+          addAvailableLights(v2Lights, this.config);
+
+          const roomData = await this.hueApi.groupResource.getGroupResources("room");
+          if (roomData.length > 0) {
+            addAvailableGroups(roomData, "room", this.config);
+          }
+
+          const zoneData = await this.hueApi.groupResource.getGroupResources("zone");
+          if (zoneData.length > 0) {
+            addAvailableGroups(zoneData, "zone", this.config);
+          }
+
+          this.updateEntityIndexes();
+          this.config.markMigrated();
+          this.migrating = false;
+          log.info("Migration successful");
+          return;
+        } catch (error) {
+          retries++;
+          // Abort in case of authentication error! New Hub authorization required
+          if (error instanceof HueError && error.statusCode == StatusCodes.Unauthorized) {
+            log.error("Migration failed: invalid credentials, setup is required. Error: %s", error.message);
+            this.config.clear();
+            this.hueApi.setBaseUrl(undefined);
+            this.hueApi.setAuthKey("");
+            this.eventStream.disconnect();
+            return;
+          }
+
+          if (retries > max_retries) {
+            log.error(
+              "Migration failed after %d retries. Hub might be unavailable. The application will continue, but some entities might be missing. Error: %s",
+              max_retries,
+              error instanceof HueError ? error.message : error
+            );
+            return;
+          }
+
+          const waitMs = MIGRATION_INITIAL_RETRY_DELAY_MS * Math.pow(2, Math.min(5, retries - 1));
+          log.warn(
+            "Migration failed (attempt %d/%d), retrying in %d ms: %s",
+            retries,
+            max_retries,
+            waitMs,
+            error instanceof HueError ? error.message : error
+          );
+          await delay(waitMs);
+        }
+      }
+    } finally {
+      this.migrating = false;
+    }
+  }
+
+  private async readEntitiesFromConfig() {
     const lights = this.config.getLights();
     for (const light of lights) {
       const lightEntity = new Light(light.id, light.name, { features: light.features });
@@ -85,9 +175,13 @@ class PhilipsHue {
     this.groupedLightIdToGroupId.clear();
     this.lightIdToGroupIds.clear();
     this.entityIdToConfig.clear();
+    this.publicToV2LightIds.clear();
+    this.v1LightIds.clear();
     const entities = this.config.getLights();
     for (const entity of entities) {
       this.entityIdToConfig.set(entity.id, entity);
+
+      // Groups were not supported in the old v1 integration
       if (this.isGroupConfig(entity)) {
         entity.groupedLightIds.forEach((groupedLightId) => {
           this.entityIdToConfig.set(groupedLightId, entity);
@@ -96,6 +190,13 @@ class PhilipsHue {
         entity.childLightIds.forEach((lightId) => {
           this.lightIdToGroupIds.set(lightId, [...(this.lightIdToGroupIds.get(lightId) ?? []), entity.id]);
         });
+      } else {
+        if (entity.id_v1) {
+          this.entityIdToConfig.set(entity.id_v1, entity);
+          this.publicToV2LightIds.set(entity.id_v1, entity.id);
+          this.v1LightIds.add(entity.id_v1);
+        }
+        this.publicToV2LightIds.set(entity.id, entity.id);
       }
     }
   }
@@ -119,7 +220,7 @@ class PhilipsHue {
       this.updateLights().catch((error) => log.error("Updating lights after event stream connection failed:", error));
     });
     this.eventStream.on("disconnected", async () => {
-      log.info("Event stream disconnected, trying to reconnect");
+      log.debug("Event stream disconnected, trying to reconnect");
       // most likely the Hub is no longer available: set all configured lights to state UNKNOWN
       this.updateEntityStates(LightStates.Unknown);
       await delay(2000);
@@ -154,22 +255,30 @@ class PhilipsHue {
   // light-added and light-updated are the same
   private handleConfigEvent(event: ConfigEvent) {
     if (event.type === "light-added") {
-      const light = new Light(event.data.id, event.data.name, { features: event.data.features });
+      const light = new Light(event.data.id, event.data.name, {
+        features: event.data.features
+      });
       this.addAvailableLight(light);
     }
     this.updateEntityIndexes();
   }
 
   private addAvailableLight(light: Light) {
-    light.setCmdHandler((entity, command, params) => {
-      const latestConfig = this.entityIdToConfig.get(entity.id);
-      if (!latestConfig) {
-        log.error("No config found for entity: %s", entity.id);
-        return Promise.resolve(StatusCodes.ServerError);
-      }
-      return this.handleLightCmd(entity, latestConfig, command, params);
-    });
+    light.setCmdHandler(this.onEntityCommand.bind(this));
     this.uc.addAvailableEntity(light);
+  }
+
+  private async onEntityCommand(
+    entity: Entity,
+    command: string,
+    params?: { [key: string]: string | number | boolean }
+  ): Promise<StatusCodes> {
+    const latestConfig = this.entityIdToConfig.get(this.getV2EntityId(entity.id));
+    if (!latestConfig) {
+      log.error("No config found for entity: %s", entity.id);
+      return StatusCodes.NotFound;
+    }
+    return this.handleLightCmd(entity, latestConfig, command, params);
   }
 
   private isGroupConfig(entityConfig: LightOrGroupConfig): entityConfig is GroupConfig {
@@ -186,7 +295,7 @@ class PhilipsHue {
     const entityIds = isGroup ? entityConfig.groupedLightIds : [entity.id];
     if (!entityIds || entityIds.length === 0) {
       log.error("handleLightCmd, missing groupedLightIds for group entity: %s", entity.id);
-      return StatusCodes.ServerError;
+      return StatusCodes.NotFound;
     }
 
     const results = new Set(
@@ -213,11 +322,12 @@ class PhilipsHue {
     isGroup: boolean,
     params?: { [key: string]: string | number | boolean }
   ): Promise<StatusCodes> {
+    const v2EntityId = this.getV2EntityId(entityId);
     try {
       switch (command) {
         case LightCommands.Toggle: {
           const currentState = entity.attributes?.[LightAttributes.State] as LightStates;
-          await this.hueApi.lightResource.setOn(entityId, currentState !== LightStates.On, !isGroup);
+          await this.hueApi.lightResource.setOn(v2EntityId, currentState !== LightStates.On, !isGroup);
           break;
         }
         case LightCommands.On: {
@@ -227,7 +337,7 @@ class PhilipsHue {
             params?.hue === undefined
           ) {
             // if no parameters are provided, simply turn on the light
-            await this.hueApi.lightResource.setOn(entityId, true, !isGroup);
+            await this.hueApi.lightResource.setOn(v2EntityId, true, !isGroup);
             break;
           }
 
@@ -243,22 +353,25 @@ class PhilipsHue {
           }
           if (params?.color_temperature !== undefined) {
             const config = this.config.getLight(entityId);
-            const minMirek = config?.mirek_schema?.mirek_minimum;
-            const maxMirek = config?.mirek_schema?.mirek_maximum;
-            req.color_temperature = {
-              mirek: colorTempToMirek(Number(params.color_temperature), minMirek, maxMirek)
-            };
+            const mirek = this.getMirek(entityId, config);
+            const minMirek = mirek?.minMirek;
+            const maxMirek = mirek?.maxMirek;
+            if (minMirek && maxMirek) {
+              req.color_temperature = {
+                mirek: colorTempToMirek(Number(params.color_temperature), minMirek, maxMirek)
+              };
+            }
           }
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             const currentB = Number(entity.attributes?.[LightAttributes.Brightness]);
             const v = Number.isFinite(currentB) ? Math.max(0, Math.min(currentB, 255)) / 255 : 1;
             req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), v) };
           }
-          await this.hueApi.lightResource.updateLightState(entityId, req, !isGroup);
+          await this.hueApi.lightResource.updateLightState(v2EntityId, req, !isGroup);
           break;
         }
         case LightCommands.Off:
-          await this.hueApi.lightResource.setOn(entityId, false, !isGroup);
+          await this.hueApi.lightResource.setOn(v2EntityId, false, !isGroup);
           break;
         default:
           log.error("handleLightCmd, unsupported command: %s", command);
@@ -274,6 +387,23 @@ class PhilipsHue {
       }
       log.error("handleLightCmd error", error);
       return StatusCodes.ServerError;
+    }
+  }
+
+  private getMirek(entityId: string, config?: LightOrGroupConfig) {
+    const minMirek = config?.mirek_schema?.mirek_minimum;
+    const maxMirek = config?.mirek_schema?.mirek_maximum;
+    if (minMirek && maxMirek) {
+      return { minMirek, maxMirek };
+    }
+
+    const groupId = this.groupedLightIdToGroupId.get(entityId);
+    if (groupId) {
+      const groupLight = this.config.getLight(groupId!);
+      return {
+        minMirek: groupLight?.mirek_schema?.mirek_minimum,
+        maxMirek: groupLight?.mirek_schema?.mirek_maximum
+      };
     }
   }
 
@@ -324,6 +454,7 @@ class PhilipsHue {
               continue;
             }
             this.config.updateLight(data.id, {
+              id_v1: data.id_v1,
               name: data.metadata.name as string,
               features: lightConfig.features,
               gamut_type: lightConfig.gamut_type,
@@ -375,15 +506,37 @@ class PhilipsHue {
   private handleEventStreamDelete(event: HueEvent) {
     const configured = this.uc.getConfiguredEntities();
     for (const data of event.data) {
-      configured.updateEntityAttributes(data.id, {
-        [LightAttributes.State]: LightStates.Unavailable
-      });
+      const publicIds = this.getPublicEntityIds(data.id);
+      for (const publicEntityId of publicIds) {
+        configured.updateEntityAttributes(publicEntityId, {
+          [LightAttributes.State]: LightStates.Unavailable
+        });
+      }
       this.config.removeLight(data.id);
     }
     this.updateEntityIndexes();
   }
 
   private async handleSubscribeEntities(ids: string[]) {
+    const configured = this.uc.getConfiguredEntities();
+
+    for (const id of ids) {
+      // Support legacy entity configurations in the Remote using the old v1 light identifier
+      if (this.v1LightIds.has(id) && !configured.contains(id)) {
+        const entity = this.uc.getAvailableEntities().getEntity(this.getV2EntityId(id));
+        if (entity) {
+          // clone v2 entity using the v1 identifier
+          const v1Entity = new Light(id, entity.name, {
+            features: entity.features as LightFeatures[],
+            attributes: entity.attributes,
+            options: entity.options
+          });
+          v1Entity.setCmdHandler(this.onEntityCommand.bind(this));
+
+          configured.addAvailableEntity(v1Entity);
+        }
+      }
+    }
     const hubConfig = this.config.getHubConfig();
 
     if (hubConfig && hubConfig.ip) {
@@ -425,7 +578,19 @@ class PhilipsHue {
     }
   }
 
+  /**
+   * Updates the state of all configured lights.
+   *
+   * Called whenever the event stream is connected or after a `connect` request of the Remote.
+   *
+   * This method iterates over all configured light entities, updating their
+   * states individually, and then refreshes the entity indexes.
+   */
   private async updateLights() {
+    if (this.config.needsMigration()) {
+      await this.migrateConfig(5);
+    }
+    // TODO get all lights at once instead of one call per light? Probably have to split by group type
     for (const entity of this.uc.getConfiguredEntities().getEntities()) {
       const entityId = entity.entity_id as string;
       await this.updateLight(entityId);
@@ -434,22 +599,32 @@ class PhilipsHue {
     // TODO if an error occurred while updating lights: perform a manual connectivity test and set entity states
   }
 
+  /**
+   * Updates the state and configuration of a light or group of lights based on the provided entity ID.
+   *
+   * Determines if the entity is a single light or a group, fetches the corresponding resource,
+   * updates the configuration, and synchronizes the state. Entity change events are emitted for changed attributes.
+   *
+   * @param {string} entityId - The unique v1 or v2 identifier of the light or group to update.
+   * @return {Promise<boolean>} A promise that resolves to `true` if the update succeeds, or `false` if an error occurs.
+   */
   private async updateLight(entityId: string): Promise<boolean> {
+    const v2EntityId = this.getV2EntityId(entityId);
     try {
-      const config = this.entityIdToConfig.get(entityId);
+      const config = this.entityIdToConfig.get(v2EntityId);
       if (!config) {
-        log.warn("No config found for entity %s; skipping update", entityId);
+        log.warn("No config found for entity %s; skipping update", v2EntityId);
         return false;
       }
       const isGroup = this.isGroupConfig(config);
       if (isGroup) {
-        const groupResource = await this.hueApi.groupResource.getGroupResource(entityId, config.groupType);
+        const groupResource = await this.hueApi.groupResource.getGroupResource(v2EntityId, config.groupType);
         if (!["room", "zone"].includes(groupResource.type)) {
-          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, entityId);
+          log.warn("Unsupported group type '%s' for entity %s; skipping update", groupResource.type, v2EntityId);
           return false;
         }
         const groupFeatures = getGroupFeatures(groupResource);
-        this.config.updateLight(entityId, {
+        this.config.updateLight(v2EntityId, {
           name: groupResource.metadata.name,
           features: groupFeatures,
           groupedLightIds: groupResource.grouped_lights.map((gl) => gl.id),
@@ -458,17 +633,18 @@ class PhilipsHue {
           gamut_type: getMostCommonGamut(groupResource),
           mirek_schema: getMinMaxMirek(groupResource)
         });
-        await this.syncGroupState(entityId, groupResource);
+        await this.syncGroupState(v2EntityId, groupResource);
       } else {
-        const light = await this.hueApi.lightResource.getLight(entityId);
+        const light = await this.hueApi.lightResource.getLight(v2EntityId);
         const lightFeatures = getLightFeatures(light);
-        this.config.updateLight(entityId, {
+        this.config.updateLight(v2EntityId, {
+          id_v1: light.id_v1,
           name: light.metadata.name,
           features: lightFeatures,
           gamut_type: light.color?.gamut_type,
           mirek_schema: light.color_temperature?.mirek_schema
         });
-        await this.syncLightState(entityId, light);
+        await this.syncLightState(v2EntityId, light);
       }
 
       return true;
@@ -495,20 +671,33 @@ class PhilipsHue {
       //       But this might be rather slow, especially if the stream is still connected if an error occurs here!
       // Only set entity to Unavailable for missing or invalid authentication key errors.
       const state = statusCode === 401 || statusCode === 403 ? LightStates.Unavailable : LightStates.Unknown;
-      this.uc.getConfiguredEntities().updateEntityAttributes(entityId, {
-        [LightAttributes.State]: state
-      });
+      const publicIds = this.getPublicEntityIds(entityId);
+      for (const publicEntityId of publicIds) {
+        this.uc.getConfiguredEntities().updateEntityAttributes(publicEntityId, {
+          [LightAttributes.State]: state
+        });
+      }
 
       return false;
     }
   }
 
-  private async syncLightState(entityId: string, light: Partial<LightResource>) {
-    const entity = this.uc.getConfiguredEntities().getEntity(entityId);
-    if (!entity) {
-      log.debug("entity is not configured, skipping sync", entityId);
+  /**
+   * Synchronizes the state of a light entity with the current state of the provided light resource.
+   *
+   * An entity change event is triggered if any entity attribute changes.
+   *
+   * @param v2Id - The unique v2 identifier of the entity to be synced.
+   * @param light - A partial representation of the light resource containing the updated state.
+   * @return A promise that resolves once the synchronization process is complete.
+   */
+  private async syncLightState(v2Id: string, light: Partial<LightResource>) {
+    const publicIds = this.getPublicEntityIds(v2Id);
+    if (publicIds.length === 0) {
+      log.debug("entity %s is not configured, skipping sync", v2Id);
       return;
     }
+
     const lightState: Record<string, string | number> = {};
     if (light.on) {
       lightState[LightAttributes.State] = light.on.on ? LightStates.On : LightStates.Off;
@@ -517,14 +706,17 @@ class PhilipsHue {
       lightState[LightAttributes.Brightness] = percentToBrightness(light.dimming.brightness);
     }
     if (light.color_temperature && light.color_temperature.mirek_valid) {
-      const config = this.config.getLight(entityId);
-      const minMirek = config?.mirek_schema?.mirek_minimum;
-      const maxMirek = config?.mirek_schema?.mirek_maximum;
-      lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(
-        light.color_temperature.mirek,
-        minMirek,
-        maxMirek
-      );
+      const config = this.config.getLight(v2Id);
+      const mirek = this.getMirek(v2Id, config);
+      const minMirek = mirek?.minMirek;
+      const maxMirek = mirek?.maxMirek;
+      if (minMirek && maxMirek) {
+        lightState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+          light.color_temperature.mirek,
+          minMirek,
+          maxMirek
+        );
+      }
     }
 
     if (light.color && light.color.xy) {
@@ -532,7 +724,14 @@ class PhilipsHue {
       lightState[LightAttributes.Hue] = hue;
       lightState[LightAttributes.Saturation] = sat;
     }
-    this.uc.getConfiguredEntities().updateEntityAttributes(entityId, lightState);
+
+    // update changed attributes and send WS entity change event
+    if (Object.keys(lightState).length === 0) {
+      return;
+    }
+    for (const publicEntityId of publicIds) {
+      this.uc.getConfiguredEntities().updateEntityAttributes(publicEntityId, lightState);
+    }
   }
 
   private async syncGroupState(entityId: string, group: CombinedGroupResource) {
@@ -543,7 +742,7 @@ class PhilipsHue {
     }
     const groupState: Record<string, string | number> = {};
     const groupedLights = group.grouped_lights;
-    const anyOn = groupedLights.some((groupLight) => groupLight.on?.on === true);
+    const anyOn = groupedLights.some((groupLight) => groupLight.on?.on);
     const anyOff = groupedLights.some((groupLight) => groupLight.on && !groupLight.on.on);
     if (anyOn) {
       groupState[LightAttributes.State] = LightStates.On;
@@ -561,13 +760,16 @@ class PhilipsHue {
       group.lights?.find((light) => light.color_temperature?.mirek_valid);
     if (colorTemp?.color_temperature) {
       const config = this.config.getLight(entityId);
-      const minMirek = config?.mirek_schema?.mirek_minimum;
-      const maxMirek = config?.mirek_schema?.mirek_maximum;
-      groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(
-        colorTemp.color_temperature.mirek,
-        minMirek,
-        maxMirek
-      );
+      const mirek = this.getMirek(entityId, config);
+      const minMirek = mirek?.minMirek;
+      const maxMirek = mirek?.maxMirek;
+      if (minMirek && maxMirek) {
+        groupState[LightAttributes.ColorTemperature] = mirekToColorTemp(
+          colorTemp.color_temperature.mirek,
+          minMirek,
+          maxMirek
+        );
+      }
     }
 
     const color =
@@ -595,6 +797,37 @@ class PhilipsHue {
         });
       }
     }
+  }
+
+  /**
+   * Get all configured entity identifiers of the given v2 ID.
+   * If the Remote has legacy v1 entities configured, the light might be available as two entities with v1 and v2 ID.
+   *
+   * @param v2Id v2 light identifier
+   */
+  private getPublicEntityIds(v2Id: string): string[] {
+    const ids = [];
+
+    if (this.uc.getConfiguredEntities().contains(v2Id)) {
+      ids.push(v2Id);
+    }
+
+    const light = this.config.getLight(v2Id);
+    if (light && "id_v1" in light && light.id_v1) {
+      if (this.uc.getConfiguredEntities().contains(light.id_v1)) {
+        ids.push(light.id_v1);
+      }
+    }
+
+    return ids;
+  }
+
+  /**
+   * Resolve the v2 light identifier from a legacy v1 identifier.
+   * Returns the same identifier if it's not a v1 ID.
+   */
+  private getV2EntityId(entityId: string): string {
+    return this.publicToV2LightIds.get(entityId) ?? entityId;
   }
 }
 

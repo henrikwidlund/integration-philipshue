@@ -154,7 +154,6 @@ class GroupResource {
 
     return {
       id: group.id,
-      id_v1: group.id_v1,
       lights: mappedChildLights,
       grouped_lights: groups.filter(
         (groupedLight): groupedLight is GroupedLightResource => groupedLight !== null

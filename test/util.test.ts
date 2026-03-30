@@ -56,9 +56,9 @@ test("percentToBrightness handles invalid values", (t) => {
 // --- Color Temperature & Mirek ---
 
 test("mirekToColorTemp converts 153-500 to 0-100", (t) => {
-  t.is(mirekToColorTemp(153), 0);
-  t.is(mirekToColorTemp(500), 100);
-  t.is(Math.round(mirekToColorTemp(326.5)), 50);
+  t.is(mirekToColorTemp(153, 153, 500), 0);
+  t.is(mirekToColorTemp(500, 153, 500), 100);
+  t.is(Math.round(mirekToColorTemp(326.5, 153, 500)), 50);
 });
 
 test("mirekToColorTemp with custom range", (t) => {
@@ -68,16 +68,16 @@ test("mirekToColorTemp with custom range", (t) => {
 });
 
 test("mirekToColorTemp handles invalid values", (t) => {
-  t.is(mirekToColorTemp(152), 0);
-  t.is(mirekToColorTemp(501), 100);
-  t.is(mirekToColorTemp(NaN), 0);
-  t.is(mirekToColorTemp(Infinity), 100);
+  t.is(mirekToColorTemp(152, 153, 500), 0);
+  t.is(mirekToColorTemp(501, 153, 500), 100);
+  t.is(mirekToColorTemp(NaN, 153, 500), 0);
+  t.is(mirekToColorTemp(Infinity, 153, 500), 100);
 });
 
 test("colorTempToMirek converts 0-100 to 153-500", (t) => {
-  t.is(colorTempToMirek(0), 153);
-  t.is(colorTempToMirek(100), 500);
-  t.is(colorTempToMirek(50), 327);
+  t.is(colorTempToMirek(0, 153, 500), 153);
+  t.is(colorTempToMirek(100, 153, 500), 500);
+  t.is(colorTempToMirek(50, 153, 500), 327);
 });
 
 test("colorTempToMirek with custom range", (t) => {
@@ -87,10 +87,10 @@ test("colorTempToMirek with custom range", (t) => {
 });
 
 test("colorTempToMirek handles invalid values", (t) => {
-  t.is(colorTempToMirek(-1), 153);
-  t.is(colorTempToMirek(101), 500);
-  t.is(colorTempToMirek(NaN), 153);
-  t.is(colorTempToMirek(Infinity), 500);
+  t.is(colorTempToMirek(-1, 153, 500), 153);
+  t.is(colorTempToMirek(101, 153, 500), 500);
+  t.is(colorTempToMirek(NaN, 153, 500), 153);
+  t.is(colorTempToMirek(Infinity, 153, 500), 500);
 });
 
 // --- HSV & XY Conversions ---
