@@ -10,10 +10,9 @@ The integration implements the UC Remote [Integration API](https://github.com/un
 via JSON messages over WebSocket.
 
 > [!IMPORTANT]
-> This driver is currently being rewritten to fully leverage the Hue API v2 with event streaming.
 >
-> - Hue Bridge v1 is no longer supported.
-> - Hue Bridge Pro is supported via the v2 API.
+> - The Hue Bridge v1 is no longer supported with version v0.3.0.
+> - The latest Hue Bridge Pro is supported via the v2 API starting with version v0.3.0.
 
 ## Hue v1 API migration
 

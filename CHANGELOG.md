@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
+---
+
+## v0.3.0 - 2026-04-08
+
 ### Breaking Changes
 
 - Using Philips Hue v2 API. V1 Hue Bridges are no longer supported ([#19](https://github.com/unfoldedcircle/integration-philipshue/pull/19)).
@@ -21,6 +25,7 @@ _Changes in the next release_
 
 - Manual Hue hub setup option ([#39](https://github.com/unfoldedcircle/integration-philipshue/pull/39)).
 - Add support for rooms and zones by @henrikwidlund ([#49](https://github.com/unfoldedcircle/integration-philipshue/pull/49)).
+- Use custom icons for room and zone groups ([#116](https://github.com/unfoldedcircle/integration-philipshue/pull/116)).
 - Initial unit tests ([#69](https://github.com/unfoldedcircle/integration-philipshue/pull/69)).
 
 ### Changed
@@ -40,8 +45,6 @@ _Changes in the next release_
 - Setup flow restart after cancelling ([#48](https://github.com/unfoldedcircle/integration-philipshue/pull/48)).
 - Invalid color picker conversion by @henrikwidlund ([#53](https://github.com/unfoldedcircle/integration-philipshue/pull/53)).
 - Potential errors in color conversions.
-
----
 
 ## v0.2.16 - 2023-11-15
 

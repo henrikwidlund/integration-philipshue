@@ -5,13 +5,13 @@
   "name": { "en": "Philips Hue" },
   "icon": "uc:integration",
   "description": {
-    "en": "Control your Philips Hue lights with Remote Two/3.",
-    "de": "Steuere Philips Hue Lampen mit Remote Two/3."
+    "en": "Control your Philips Hue lights with Remote Two/3. Supports the Hue Bridge (Gen 2) and Hue Bridge Pro.",
+    "de": "Steuere Philips Hue Lampen mit Remote Two/3. Unterstützt die Hue Bridge (Gen 2) und Hue Bridge Pro."
   },
   "developer": {
     "name": "Unfolded Circle ApS",
     "email": "hello@unfoldedcircle.com",
-    "url": "https://www.unfoldedcircle.com"
+    "url": "https://github.com/unfoldedcircle/integration-philipshue"
   },
   "home_page": "https://www.unfoldedcircle.com",
   "setup_data_schema": {
@@ -37,5 +37,5 @@
       }
     ]
   },
-  "release_date": "2025-02-17"
+  "release_date": "2026-04-08"
 }
