@@ -288,7 +288,8 @@ class PhilipsHue {
       return `${light.groupType === "room" ? "Room group" : "Zone group"} with ${light.childLightIds.length} light(s)`;
     }
 
-    return undefined;
+    // make it easier to distinguish between API v1 and v2 entities having the same name after a migration
+    return "API v2 ID";
   }
 
   private addAvailableLight(light: Light) {

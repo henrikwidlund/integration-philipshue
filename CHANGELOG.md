@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
+### Changed
+
+- Add an "API v2 ID" comment to light-entities for easier identification when having old v1 lights.
+
 ---
 
 ## v0.3.1 - 2026-04-13
