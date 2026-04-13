@@ -154,6 +154,7 @@ class Config extends EventEmitter {
 
     try {
       if (fs.existsSync(configPath)) {
+        log.debug(`Loading configuration from ${CFG_FILENAME}`);
         const data = fs.readFileSync(configPath, "utf-8");
         this.config = JSON.parse(data);
         if (this.config.cfg_version === undefined) {
@@ -191,6 +192,7 @@ class Config extends EventEmitter {
     const configPath = path.join(this.configDir, V1_CFG_FILENAME);
 
     if (!fs.existsSync(configPath)) {
+      log.debug("No old configuration file found, skipping migration");
       return false;
     }
 
@@ -209,6 +211,7 @@ class Config extends EventEmitter {
       this.saveToFile();
       fs.rmSync(configPath);
       if (fs.existsSync(entityCfgPath)) {
+        log.debug(`Removing old entity configuration file: ${entityCfgPath}`);
         fs.rmSync(entityCfgPath);
       }
       return true;
