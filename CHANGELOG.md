@@ -9,13 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Changes in the next release_
 
-### Changed
-
-- Add an "API v2 ID" comment to light-entities for easier identification when having old v1 lights.
-
 ---
 
-## v0.3.1 - 2026-04-13
+## v0.3.2 - 2026-04-13
 
 ### Fixed
 
@@ -24,6 +20,7 @@ _Changes in the next release_
 ### Changed
 
 - Update integration-api, dependencies, GitHub release action ([#118](https://github.com/unfoldedcircle/integration-philipshue/pull/118), [#121](https://github.com/unfoldedcircle/integration-philipshue/pull/121)).
+- Add an "API v2 ID" comment to light-entities for easier identification when having old v1 lights.
 
 ## v0.3.0 - 2026-04-08
 
