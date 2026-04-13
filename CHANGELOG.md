@@ -11,6 +11,16 @@ _Changes in the next release_
 
 ---
 
+## v0.3.1 - 2026-04-13
+
+### Fixed
+
+- Translation file loading ([#122](https://github.com/unfoldedcircle/integration-philipshue/pull/122)).
+
+### Changed
+
+- Update integration-api, dependencies, GitHub release action ([#118](https://github.com/unfoldedcircle/integration-philipshue/pull/118), [#121](https://github.com/unfoldedcircle/integration-philipshue/pull/121)).
+
 ## v0.3.0 - 2026-04-08
 
 ### Breaking Changes
