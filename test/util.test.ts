@@ -126,6 +126,103 @@ test("convertHSVtoXY handles black (sum=0)", (t) => {
   t.is(xy.y, 0.3);
 });
 
+// Gamut triangle fixtures from Philips Hue developer docs:
+// https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/
+const GAMUT_A = {
+  red: { x: 0.704, y: 0.296 },
+  green: { x: 0.2151, y: 0.7106 },
+  blue: { x: 0.138, y: 0.08 }
+};
+const GAMUT_C = {
+  red: { x: 0.6915, y: 0.3038 },
+  green: { x: 0.17, y: 0.7 },
+  blue: { x: 0.1532, y: 0.0475 }
+};
+
+test("convertHSVtoXY with no gamut returns unclipped xy", (t) => {
+  // 4th arg omitted → existing behavior (no clip).
+  const xy = convertHSVtoXY(0, 255, 1);
+  // Saturated red under the Wide-RGB-D65 + gamma-decode pipeline sits outside
+  // every Hue gamut triangle (near ≈0.7007, 0.2993).
+  t.true(xy.x > 0.69);
+  t.true(xy.y < 0.31);
+});
+
+test("convertHSVtoXY matches Hue dev-docs algorithm for a canonical input", (t) => {
+  // Canonical regression guard: hue=30°, sat=255, value=0.5.
+  // Algorithm per https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/
+  //
+  // HSV(30, 255, 0.5) → sRGB(0.5, 0.25, 0) after the standard HSV→RGB sextant math.
+  // sRGB gamma decode (> 0.04045 branch) using ((c + 0.055) / 1.055)^2.4:
+  //   r_lin = (0.555/1.055)^2.4 ≈ 0.21404
+  //   g_lin = (0.305/1.055)^2.4 ≈ 0.05086
+  //   b_lin = 0
+  // Philips "Wide RGB D65" matrix:
+  //   X = 0.21404·0.664511 + 0.05086·0.154324 + 0·0.162028 ≈ 0.15007
+  //   Y = 0.21404·0.283881 + 0.05086·0.668433 + 0·0.047685 ≈ 0.09476
+  //   Z = 0.21404·0.000088 + 0.05086·0.072310 + 0·0.986039 ≈ 0.00370
+  // Normalize: x ≈ 0.6038, y ≈ 0.3813.
+  // Tolerance ±0.005 catches partial reverts (gamma right / matrix wrong, or vice versa).
+  const xy = convertHSVtoXY(30, 255, 0.5);
+  t.true(Math.abs(xy.x - 0.6038) < 0.005, `x: ${xy.x} vs expected ≈0.6038`);
+  t.true(Math.abs(xy.y - 0.3813) < 0.005, `y: ${xy.y} vs expected ≈0.3813`);
+});
+
+test("convertHSVtoXY in-gamut input passes through unchanged on Gamut C", (t) => {
+  // HSV(0, 128, 1): a half-saturated red. Its xy sits well inside the Gamut C
+  // triangle (≈0.525, 0.313), so clipping must be a no-op.
+  const unclipped = convertHSVtoXY(0, 128, 1);
+  const clipped = convertHSVtoXY(0, 128, 1, GAMUT_C);
+  t.true(Math.abs(clipped.x - unclipped.x) < 1e-9);
+  t.true(Math.abs(clipped.y - unclipped.y) < 1e-9);
+});
+
+test("convertHSVtoXY clips saturated red onto Gamut C red vertex", (t) => {
+  // Fully saturated red (≈0.7007, 0.2993) lies just outside Gamut C's red vertex
+  // (0.6915, 0.3038); it should clip to at or very near the red corner.
+  const xy = convertHSVtoXY(0, 255, 1, GAMUT_C);
+  t.true(Math.abs(xy.x - GAMUT_C.red.x) < 0.01, `x: ${xy.x} vs ${GAMUT_C.red.x}`);
+  t.true(Math.abs(xy.y - GAMUT_C.red.y) < 0.01, `y: ${xy.y} vs ${GAMUT_C.red.y}`);
+});
+
+test("convertHSVtoXY clips saturated red onto Gamut A red vertex", (t) => {
+  // Gamut A is the tightest Hue triangle. Saturated red still sits outside its
+  // red vertex (0.704, 0.296); clipping must land at or very near the corner.
+  const xy = convertHSVtoXY(0, 255, 1, GAMUT_A);
+  t.true(Math.abs(xy.x - GAMUT_A.red.x) < 0.01, `x: ${xy.x} vs ${GAMUT_A.red.x}`);
+  t.true(Math.abs(xy.y - GAMUT_A.red.y) < 0.01, `y: ${xy.y} vs ${GAMUT_A.red.y}`);
+});
+
+test("convertHSVtoXY clips an outside-RG-edge point onto segment R-G (Gamut C)", (t) => {
+  // HSV(80, 255, 1) under the new pipeline lands outside Gamut C's red-green edge
+  // (far yellow-green region). After clipping, the result must lie ON segment R-G:
+  // barycentric s ∈ [0,1] with t ≈ 0 in the (R + s·(G−R) + t·(B−R)) basis.
+  const xy = convertHSVtoXY(80, 255, 1, GAMUT_C);
+  const { red: r, green: g, blue: b } = GAMUT_C;
+  const v1x = g.x - r.x,
+    v1y = g.y - r.y;
+  const v2x = b.x - r.x,
+    v2y = b.y - r.y;
+  const qx = xy.x - r.x,
+    qy = xy.y - r.y;
+  const v = v1x * v2y - v1y * v2x;
+  const s = (qx * v2y - qy * v2x) / v;
+  const tCoord = (v1x * qy - v1y * qx) / v;
+  t.true(s >= -1e-6 && s <= 1 + 1e-6, `s: ${s}`);
+  t.true(Math.abs(tCoord) < 1e-6, `t: ${tCoord}`);
+});
+
+test("convertHSVtoXY falls back to (0.3, 0.3) on a degenerate gamut triangle", (t) => {
+  const degenerate = {
+    red: { x: 0.3, y: 0.3 },
+    green: { x: 0.4, y: 0.4 },
+    blue: { x: 0.5, y: 0.5 }
+  };
+  const xy = convertHSVtoXY(0, 255, 1, degenerate);
+  t.is(xy.x, 0.3);
+  t.is(xy.y, 0.3);
+});
+
 test("convertXYtoHSV handles different sectors", (t) => {
   // Use known primary/secondary colors in RGB
   // We'll use the reverse conversion to get XY values that should map to these

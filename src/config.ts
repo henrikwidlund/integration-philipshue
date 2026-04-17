@@ -10,7 +10,7 @@ import EventEmitter from "node:events";
 import fs from "fs";
 import path from "path";
 import log from "./log.js";
-import { GamutType, GroupType } from "./lib/hue-api/types.js";
+import { GamutTriangle, GamutType, GroupType } from "./lib/hue-api/types.js";
 import { isDeepEqual } from "./util.js";
 
 const CFG_VERSION = 2;
@@ -22,6 +22,7 @@ export interface LightConfig {
   name: string;
   features: LightFeatures[];
   gamut_type?: GamutType;
+  gamut?: GamutTriangle;
   mirek_schema?: { mirek_minimum: number; mirek_maximum: number };
 }
 export interface GroupConfig extends Omit<LightConfig, "id_v1"> {

@@ -7,7 +7,7 @@
 
 import { LightFeatures } from "@unfoldedcircle/integration-api";
 import fs from "fs";
-import { CombinedGroupResource, GamutType, GroupType, LightResource } from "./lib/hue-api/types.js";
+import { CombinedGroupResource, GamutTriangle, GamutType, GroupType, LightResource } from "./lib/hue-api/types.js";
 import i18n from "i18n";
 import log from "./log.js";
 import Config, { GroupConfig, LightConfig } from "./config.js";
@@ -39,6 +39,7 @@ export function addAvailableLights(lights: LightResource[], config: Config) {
       name: light.metadata.name,
       features,
       gamut_type: light.color?.gamut_type,
+      gamut: light.color?.gamut,
       mirek_schema: light.color_temperature?.mirek_schema
     } as LightConfig);
   });
@@ -58,6 +59,7 @@ export function addAvailableGroups(groups: CombinedGroupResource[], groupType: G
       childLightIds: group.lights.map((light) => light.id),
       groupType,
       gamut_type: getMostCommonGamut(group),
+      gamut: getRepresentativeGamutTriangle(group),
       mirek_schema: getMinMaxMirek(group)
     } as GroupConfig);
   });
@@ -144,6 +146,20 @@ export function getMostCommonGamut(group: CombinedGroupResource): GamutType | un
   return Object.entries(gamutCounts).sort((a, b) => b[1] - a[1])[0]?.[0] as GamutType | undefined;
 }
 
+/**
+ * Pick a representative gamut triangle for a mixed group by choosing the triangle
+ * from a bulb whose gamut_type matches the most-common one in the group.
+ *
+ * A true per-group triangle intersection would be an irregular polygon; same-generation
+ * bulbs report near-identical triangles so the representative-bulb approach is an
+ * acceptable substitute.
+ */
+export function getRepresentativeGamutTriangle(group: CombinedGroupResource): GamutTriangle | undefined {
+  const mostCommon = getMostCommonGamut(group);
+  if (!mostCommon) return undefined;
+  return group.lights.find((l) => l.color?.gamut_type === mostCommon)?.color?.gamut;
+}
+
 export function getMinMaxMirek(
   group: CombinedGroupResource
 ): { mirek_minimum: number; mirek_maximum: number } | undefined {
@@ -166,9 +182,33 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
   const X = (x / y) * Y;
   const Z = ((1 - x - y) / y) * Y;
 
-  const R = 3.2406 * X - 1.5372 * Y - 0.4986 * Z;
-  const G = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
-  const B = 0.0557 * X - 0.204 * Y + 1.057 * Z;
+  // Inverse of Philips's "Wide RGB D65" matrix (per Hue developer docs).
+  // Symmetric with the matrix used in convertHSVtoXY.
+  let R = X * 1.656492 - Y * 0.354851 - Z * 0.255038;
+  let G = -X * 0.707196 + Y * 1.655397 + Z * 0.036152;
+  let B = X * 0.051713 - Y * 0.121364 + Z * 1.01153;
+
+  // Clamp negatives: xy outside the Hue gamut can produce negative linear RGB.
+  R = Math.max(0, R);
+  G = Math.max(0, G);
+  B = Math.max(0, B);
+
+  // Normalize so max channel = 1 before gamma encode (HSV hue/sat are
+  // scale-invariant, so throwing away brightness here is fine).
+  const maxLin = Math.max(R, G, B);
+  if (maxLin <= 0) {
+    return { hue: 0, sat: 0 };
+  }
+  R /= maxLin;
+  G /= maxLin;
+  B /= maxLin;
+
+  // sRGB gamma encode (linear → gamma-encoded sRGB). Symmetric with the
+  // decode step in convertHSVtoXY; required so round-tripping a color through
+  // HSV → xy → HSV preserves hue exactly.
+  R = R > 0.0031308 ? 1.055 * Math.pow(R, 1 / 2.4) - 0.055 : 12.92 * R;
+  G = G > 0.0031308 ? 1.055 * Math.pow(G, 1 / 2.4) - 0.055 : 12.92 * G;
+  B = B > 0.0031308 ? 1.055 * Math.pow(B, 1 / 2.4) - 0.055 : 12.92 * B;
 
   const V = Math.max(R, G, B);
   if (V <= 0) {
@@ -199,7 +239,59 @@ export function convertXYtoHSV(x: number, y: number, lightness = 1) {
   };
 }
 
-export function convertHSVtoXY(hue: number, saturation: number, value: number) {
+type XY = { x: number; y: number };
+
+function closestPointOnSegment(p: XY, a: XY, b: XY): XY {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const denom = abx * abx + aby * aby;
+  if (denom === 0) return { x: a.x, y: a.y };
+  const apx = p.x - a.x;
+  const apy = p.y - a.y;
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / denom));
+  return { x: a.x + t * abx, y: a.y + t * aby };
+}
+
+function clipToGamut(p: XY, gamut: GamutTriangle): XY {
+  const { red: r, green: g, blue: b } = gamut;
+  // Barycentric containment test.
+  const v1x = g.x - r.x;
+  const v1y = g.y - r.y;
+  const v2x = b.x - r.x;
+  const v2y = b.y - r.y;
+  const qx = p.x - r.x;
+  const qy = p.y - r.y;
+  const v = v1x * v2y - v1y * v2x;
+  // Degenerate triangle: fall back to the same default convertHSVtoXY uses when XYZ
+  // sums to 0, so the bridge always receives a valid chromaticity.
+  if (v === 0) return { x: 0.3, y: 0.3 };
+  const s = (qx * v2y - qy * v2x) / v;
+  const t = (v1x * qy - v1y * qx) / v;
+  if (s >= 0 && t >= 0 && s + t <= 1) return p;
+
+  // Project onto each edge and return the nearest clamp point.
+  const pRG = closestPointOnSegment(p, r, g);
+  const pGB = closestPointOnSegment(p, g, b);
+  const pBR = closestPointOnSegment(p, b, r);
+  const dist2 = (a1: XY, b1: XY) => (a1.x - b1.x) * (a1.x - b1.x) + (a1.y - b1.y) * (a1.y - b1.y);
+  const dRG = dist2(p, pRG);
+  const dGB = dist2(p, pGB);
+  const dBR = dist2(p, pBR);
+  if (dRG <= dGB && dRG <= dBR) return pRG;
+  if (dGB <= dBR) return pGB;
+  return pBR;
+}
+
+/**
+ * Convert HSV (remote color-wheel input) to CIE 1931 xy chromaticity for the Hue bridge.
+ *
+ * Follows the canonical conversion from the Philips Hue developer docs:
+ * https://developers.meethue.com/develop/application-design-guidance/color-conversion-formulas-rgb-to-xy-and-back/
+ *
+ * If a gamut triangle is supplied, the result is clipped onto that triangle so
+ * edge-of-gamut selections render consistently across bulb models.
+ */
+export function convertHSVtoXY(hue: number, saturation: number, value: number, gamut?: GamutTriangle): XY {
   const h = hue / 60;
   const s = saturation / 255;
   const v = value;
@@ -224,14 +316,21 @@ export function convertHSVtoXY(hue: number, saturation: number, value: number) {
   }
 
   [r, g, b] = [r + m, g + m, b + m];
-  const X = 0.412453 * r + 0.35758 * g + 0.180423 * b;
-  const Y = 0.212671 * r + 0.71516 * g + 0.072169 * b;
-  const Z = 0.019334 * r + 0.119193 * g + 0.950227 * b;
+
+  // sRGB gamma decode to linear-light values (per Philips Hue developer docs).
+  r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+  g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+  b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+
+  // Philips "Wide RGB D65" matrix (distinct from the standard sRGB→XYZ matrix;
+  // tuned for the Hue gamut).
+  const X = r * 0.664511 + g * 0.154324 + b * 0.162028;
+  const Y = r * 0.283881 + g * 0.668433 + b * 0.047685;
+  const Z = r * 0.000088 + g * 0.07231 + b * 0.986039;
+
   const sum = X + Y + Z;
-  return {
-    x: sum === 0 ? 0.3 : X / sum,
-    y: sum === 0 ? 0.3 : Y / sum
-  };
+  const xy: XY = sum === 0 ? { x: 0.3, y: 0.3 } : { x: X / sum, y: Y / sum };
+  return gamut ? clipToGamut(xy, gamut) : xy;
 }
 
 export function getHubUrl(ip: string): string {

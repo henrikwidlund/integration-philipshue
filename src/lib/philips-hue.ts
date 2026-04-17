@@ -32,6 +32,7 @@ import {
   getLightFeatures,
   getMinMaxMirek,
   getMostCommonGamut,
+  getRepresentativeGamutTriangle,
   mirekToColorTemp,
   percentToBrightness
 } from "../util.js";
@@ -394,7 +395,8 @@ class PhilipsHue {
           if (params?.hue !== undefined && params?.saturation !== undefined) {
             const currentB = Number(entity.attributes?.[LightAttributes.Brightness]);
             const v = Number.isFinite(currentB) ? Math.max(0, Math.min(currentB, 255)) / 255 : 1;
-            req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), v) };
+            const lightCfg = this.config.getLight(entityId);
+            req.color = { xy: convertHSVtoXY(Number(params.hue), Number(params.saturation), v, lightCfg?.gamut) };
           }
           await this.hueApi.lightResource.updateLightState(v2EntityId, req, !isGroup);
           break;
@@ -487,6 +489,7 @@ class PhilipsHue {
               name: data.metadata.name as string,
               features: lightConfig.features,
               gamut_type: lightConfig.gamut_type,
+              gamut: lightConfig.gamut,
               mirek_schema: lightConfig.mirek_schema
             });
           }
@@ -503,6 +506,7 @@ class PhilipsHue {
             groupedLightIds: updateGroupData.grouped_lights.map((gl) => gl.id),
             childLightIds: updateGroupData.lights.map((light) => light.id),
             gamut_type: getMostCommonGamut(updateGroupData),
+            gamut: getRepresentativeGamutTriangle(updateGroupData),
             mirek_schema: getMinMaxMirek(updateGroupData)
           });
           this.syncGroupState(data.id, updateGroupData).catch((error) =>
@@ -660,6 +664,7 @@ class PhilipsHue {
           groupType: groupResource.type === "zone" ? "zone" : "room",
           childLightIds: groupResource.lights.map((light) => light.id),
           gamut_type: getMostCommonGamut(groupResource),
+          gamut: getRepresentativeGamutTriangle(groupResource),
           mirek_schema: getMinMaxMirek(groupResource)
         });
         await this.syncGroupState(v2EntityId, groupResource);
@@ -671,6 +676,7 @@ class PhilipsHue {
           name: light.metadata.name,
           features: lightFeatures,
           gamut_type: light.color?.gamut_type,
+          gamut: light.color?.gamut,
           mirek_schema: light.color_temperature?.mirek_schema
         });
         await this.syncLightState(v2EntityId, light);

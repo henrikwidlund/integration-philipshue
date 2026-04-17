@@ -89,11 +89,7 @@ export interface LightResource {
       x: number;
       y: number;
     };
-    gamut: {
-      red: { x: number; y: number };
-      green: { x: number; y: number };
-      blue: { x: number; y: number };
-    };
+    gamut: GamutTriangle;
     gamut_type: GamutType;
   };
   dynamics: {
@@ -173,11 +169,7 @@ export interface GroupedLightResource {
       x: number;
       y: number;
     };
-    gamut: {
-      red: { x: number; y: number };
-      green: { x: number; y: number };
-      blue: { x: number; y: number };
-    };
+    gamut: GamutTriangle;
     gamut_type: GamutType;
   };
   alert: {
@@ -388,3 +380,9 @@ export interface CombinedGroupResource {
 }
 
 export type GamutType = "A" | "B" | "C";
+
+export interface GamutTriangle {
+  red: { x: number; y: number };
+  green: { x: number; y: number };
+  blue: { x: number; y: number };
+}
